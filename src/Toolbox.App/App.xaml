@@ -1,0 +1,65 @@
+<Application x:Class="Toolbox.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+      </ResourceDictionary.MergedDictionaries>
+      <Color x:Key="SystemAccentColor">#137F70</Color>
+      <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#137F70" />
+      <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#198F7F" />
+      <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#259989" />
+      <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#137F70" />
+      <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#137F70" />
+      <Style TargetType="Button">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Padding" Value="14,6" />
+      </Style>
+      <Style TargetType="TextBox">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="MinHeight" Value="38" />
+      </Style>
+      <Style TargetType="ComboBox">
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="MinHeight" Value="38" />
+      </Style>
+      <Style x:Key="SidebarButtonStyle" TargetType="ToggleButton">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Foreground" Value="#D6E1DC" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ToggleButton">
+              <Grid Height="38">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Surface.Opacity" Value="0.8" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="Surface.Opacity" Value="0.6" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="Surface.Opacity" Value="0.4" /></VisualState.Setters></VisualState>
+                    <VisualState x:Name="Checked">
+                      <VisualState.Setters>
+                        <Setter Target="Surface.Background" Value="#29473D" />
+                        <Setter Target="Marker.Visibility" Value="Visible" />
+                        <Setter Target="Label.Foreground" Value="#B9F2D9" />
+                      </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="CheckedPointerOver"><VisualState.Setters><Setter Target="Surface.Background" Value="#315549"/><Setter Target="Marker.Visibility" Value="Visible"/><Setter Target="Label.Foreground" Value="#B9F2D9"/></VisualState.Setters></VisualState>
+                    <VisualState x:Name="CheckedPressed"><VisualState.Setters><Setter Target="Surface.Background" Value="#203C32"/><Setter Target="Marker.Visibility" Value="Visible"/><Setter Target="Label.Foreground" Value="#B9F2D9"/></VisualState.Setters></VisualState>
+                    <VisualState x:Name="CheckedDisabled"><VisualState.Setters><Setter Target="Surface.Background" Value="#29473D"/><Setter Target="Surface.Opacity" Value="0.4"/></VisualState.Setters></VisualState>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <Border x:Name="Surface" Background="Transparent" CornerRadius="9">
+                  <ContentPresenter x:Name="Label" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Margin="16,0,10,0" />
+                </Border>
+                <Border x:Name="Marker" Width="3" Height="18" Background="#89E2B9" CornerRadius="2" HorizontalAlignment="Left" Visibility="Collapsed" />
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+.vs/
+.tools/
+.scratch/
+artifacts/
+*.user
+*.log
+.env
+.env.*
