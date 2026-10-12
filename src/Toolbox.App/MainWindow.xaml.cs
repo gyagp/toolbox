@@ -8,6 +8,7 @@ using Toolbox.Core;
 using Toolbox.App.Tools;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Windowing;
 
 namespace Toolbox.App;
 
@@ -25,6 +26,9 @@ public sealed partial class MainWindow : Window
     private bool _paused, _recordingStarted, _closeWhenDone;
     private readonly CaptureLibrary _library;
     private readonly Dictionary<ToolId, ToggleButton> _navigation = [];
+    private AppWindowPresenter? _windowedPresenter;
+    private Windows.Graphics.RectInt32 _windowedBounds;
+    private bool _wasMaximized;
     private readonly Stopwatch _elapsed = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -39,6 +43,8 @@ public sealed partial class MainWindow : Window
         _handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         FileToolsPage.Initialize(_handle);
         ImageViewerPage.Initialize(_handle);
+        ImageViewerPage.FullScreenRequested += full => SafeAction(() => SetViewerFullScreen(full));
+        ImageViewerPage.ImageOpened += path => Title = $"{Path.GetFileName(path)} · Toolbox";
         RootGrid.SizeChanged += (_, e) => ShortcutHints.Visibility = e.NewSize.Height < 740 ? Visibility.Collapsed : Visibility.Visible;
         FileToolsPage.BusyChanged += _ => UpdateNavigationAvailability();
         BuildNavigation();
@@ -138,6 +144,7 @@ public sealed partial class MainWindow : Window
     private async Task RunAsync(Func<Task> action)
     {
         if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy) return;
+        if (ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
         LibraryPage.Deactivate();
         ImageViewerPage.Deactivate();
         SetMode(CaptureMode.Selecting);
@@ -153,6 +160,7 @@ public sealed partial class MainWindow : Window
             RestoreWindow();
             if (_closeWhenDone) Close();
             else if (LibraryPage.Visibility == Visibility.Visible && !LibraryPage.IsActive) await LibraryPage.ActivateAsync();
+            else if (ImageViewerPage.Visibility == Visibility.Visible) await ImageViewerPage.ActivateAsync();
         }
     }
 
@@ -303,6 +311,8 @@ public sealed partial class MainWindow : Window
     private async Task NavigateAsync(ToolId id, string? path = null)
     {
         if (LibraryPage.IsBusy || FileToolsPage.IsBusy) return;
+        if (id != ToolId.ImageViewer && ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
+        if (id != ToolId.ImageViewer) Title = "Toolbox · 工具箱";
         LibraryPage.Deactivate();
         if (id != ToolId.ImageViewer) ImageViewerPage.Deactivate();
         foreach (var (key, button) in _navigation) button.IsChecked = key == id;
@@ -324,6 +334,44 @@ public sealed partial class MainWindow : Window
         }
         if (id == ToolId.Library) await LibraryPage.ActivateAsync(path);
         if (id == ToolId.ImageViewer) await ImageViewerPage.ActivateAsync();
+    }
+
+    internal async Task OpenImageArgumentsAsync(IEnumerable<string> arguments)
+    {
+        try
+        {
+            var request = ImageLaunchRequest.Parse(arguments);
+            if (request is null) return;
+            await NavigateAsync(ToolId.ImageViewer);
+            await ImageViewerPage.OpenPathAsync(request.Path);
+            if (request.FullScreen && ImageViewerPage.HasImage) SetViewerFullScreen(true);
+        }
+        catch (Exception error) { Status("无法打开图片", error.Message, InfoBarSeverity.Error); }
+    }
+
+    private void SetViewerFullScreen(bool fullScreen)
+    {
+        if (fullScreen == ImageViewerPage.IsFullScreen) return;
+        if (fullScreen)
+        {
+            if (!ImageViewerPage.HasImage || ImageViewerPage.Visibility != Visibility.Visible) return;
+            _windowedPresenter = AppWindow.Presenter;
+            var position = AppWindow.Position; var size = AppWindow.Size;
+            _windowedBounds = new(position.X, position.Y, size.Width, size.Height);
+            _wasMaximized = (AppWindow.Presenter as OverlappedPresenter)?.State == OverlappedPresenterState.Maximized;
+            AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        }
+        else
+        {
+            if (_windowedPresenter is not null) AppWindow.SetPresenter(_windowedPresenter);
+            else AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+            if (_wasMaximized) (AppWindow.Presenter as OverlappedPresenter)?.Maximize();
+            else AppWindow.MoveAndResize(_windowedBounds);
+            _windowedPresenter = null;
+        }
+        Sidebar.Visibility = StatusBar.Visibility = fullScreen ? Visibility.Collapsed : Visibility.Visible;
+        SidebarColumn.Width = new(fullScreen ? 0 : 188);
+        ImageViewerPage.SetFullScreen(fullScreen);
     }
     private void SafeAction(Action action)
     {

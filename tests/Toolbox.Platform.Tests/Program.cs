@@ -115,6 +115,7 @@ try
     var canceled = false;
     try { LockInspector.Inspect(source, cancelled.Token); } catch (OperationCanceledException) { canceled = true; }
     Check(canceled, "Large folder scans support cancellation");
+    ImageAssociationTests.Run(Check);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally

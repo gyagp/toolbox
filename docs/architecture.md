@@ -21,6 +21,12 @@
 
 `ImageViewerView` 使用 WinUI BitmapImage 和 Windows 图像解码器，不引入额外图像运行库。GIF 使用原生动画播放。每次加载附带版本标记，避免旧任务覆盖新选择；离开页面停止动画、清空图片并释放输入流，避免妨碍文件工具。原始大小按屏幕缩放换算到物理像素，超长图片的适应显示不受 ScrollViewer 最小缩放倍率限制。
 
+全屏由主窗口的 `AppWindowPresenterKind.FullScreen` 实现；保留原 presenter、位置、大小和最大化状态，退出后恢复。看图控件隐藏普通界面并显示可自动隐藏的浮动控件，预览键盘事件负责翻图和 Esc/F11。打开损坏图片也会保留其目录位置，避免下一张操作卡在同一文件。
+
+`ImageLaunchRequest` 解析图片路径和可选的 `--fullscreen`，普通无参数启动仍进入工具总览；路径启动立即进入图片查看器。`ImageFileTypes` 统一关联、选择器和目录过滤的扩展名。`ExplorerImageComparer` 使用 Windows 自然数字排序。
+
+`ImageFileAssociations` 仅在用户点击关联按钮后注册 HKCU 下的 ProgID、Applications/SupportedTypes、OpenWithProgids、Capabilities 与 RegisteredApplications。打开命令同时引用可执行文件和 `%1` 参数，支持含空格的路径；不写扩展名默认值或 UserChoice。注册测试只操作随机命名的隔离注册表分支。
+
 `src/Toolbox.App` 是 .NET 10、WinUI 3 的 unpackaged 桌面应用。主窗口负责捕获状态、错误提示、预览、全局快捷键和生命周期。单次只允许一个捕获会话，录屏结束后等待编码完成再恢复空闲状态；关闭时也会等待保存。
 
 `Services/NativeMethods.cs` 集中封装 Win32：枚举显示器和顶层窗口，通过 GDI BitBlt / DIB 读取 BGRA 像素，通过 RegisterHotKey 注册快捷键。`Views/SelectionWindow.cs` 使用整个虚拟桌面的静态画面，工具栏提供矩形、窗口、全屏和任意形状模式，将逻辑坐标映射回物理像素，保留负坐标显示器的偏移。窗口按原生 Z 顺序命中测试，过滤隐藏、最小化、cloaked、桌面和工具窗口；轮廓使用 DWM 可见边界。`WindowCapture` 通过 ScreenRecorderLib 的 Windows Graphics Capture 窗口源捕获实际 HWND，不退化为包含其他应用的桌面裁剪。任意形状使用偶奇规则填充、透明背景及 PNG alpha。

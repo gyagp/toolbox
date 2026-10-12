@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.1.4',
+    [string]$Version = '0.1.5',
     [string]$Dotnet = 'dotnet',
     [string]$NuGetConfig = ''
 )

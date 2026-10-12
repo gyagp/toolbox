@@ -47,4 +47,5 @@ Check(opaque.IsSimilarTo(opaque), "Stable frame detection");
 Check(!opaque.IsSimilarTo(new(40, 40, new byte[40 * 40 * 4])), "Animation / changed frame detection");
 LibraryTests.Run(Check);
 FileActionTests.Run(Check);
+ImageLaunchTests.Run(Check);
 Console.WriteLine($"PASS: {assertions} assertions (capture geometry, scrolling, content library, file-operation validation).");

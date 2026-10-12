@@ -13,8 +13,8 @@
       <SolidColorBrush x:Key="GridViewItemSelectedBackground" Color="#E4F1E9" />
       <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#137F70" />
     </Grid.Resources>
-    <Grid.ColumnDefinitions><ColumnDefinition Width="188"/><ColumnDefinition/></Grid.ColumnDefinitions>
-    <Border Background="#182923" Padding="16,28,16,22" RequestedTheme="Dark">
+    <Grid.ColumnDefinitions><ColumnDefinition x:Name="SidebarColumn" Width="188"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <Border x:Name="Sidebar" Background="#182923" Padding="16,28,16,22" RequestedTheme="Dark">
       <Grid>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal" Spacing="10" Margin="8,0,0,20">
@@ -23,7 +23,7 @@
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock Text="工具箱" FontSize="22" FontWeight="SemiBold" Foreground="#F1F7F4" />
-            <TextBlock Text="TOOLBOX  /  0.1.4" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
+            <TextBlock Text="TOOLBOX  /  0.1.5" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
           </StackPanel>
         </StackPanel>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
