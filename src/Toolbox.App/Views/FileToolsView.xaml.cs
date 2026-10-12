@@ -22,7 +22,7 @@ public sealed partial class FileToolsView : UserControl
     {
         IsBusy = busy;
         SourcePath.IsEnabled = DestinationPath.IsEnabled = PickSourceButton.IsEnabled =
-            PickDestinationButton.IsEnabled = MoveButton.IsEnabled = DeleteButton.IsEnabled = InspectButton.IsEnabled = ProcessList.IsEnabled = !busy;
+            PickDestinationButton.IsEnabled = MoveButton.IsEnabled = DeleteButton.IsEnabled = ProcessList.IsEnabled = !busy;
         ProgressPanel.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         BusyRing.IsActive = busy;
         UpdateActions();
@@ -47,7 +47,11 @@ public sealed partial class FileToolsView : UserControl
         if (IsBusy) return;
         SetBusy(true);
         try { await action(); }
-        catch (OperationCanceledException) { Notify("查询已取消", "占用查询已停止，可重新查询。", InfoBarSeverity.Informational); }
+        catch (OperationCanceledException)
+        {
+            LockSummary.Text = "查询已取消。重试操作失败时会再次检查占用。";
+            Notify("查询已取消", "可点击“重试操作”重新执行。", InfoBarSeverity.Informational);
+        }
         catch (Exception error) { Notify("操作未完成", error.Message, InfoBarSeverity.Error); }
         finally { SetBusy(false); }
     }
@@ -123,7 +127,6 @@ public sealed partial class FileToolsView : UserControl
         if (await ConfirmAsync("移入 Windows 回收站？", $"{plan.Source}\n\n文件夹中的内容也会被移入回收站。不支持回收站的位置，Windows 会另行提示。", "移入回收站")) await ExecuteAsync(plan);
     });
 
-    private async void Inspect_Click(object sender, RoutedEventArgs e) => await RunAsync(() => InspectAsync(SourcePath.Text));
     private async void Retry_Click(object sender, RoutedEventArgs e) => await RunAsync(async () => { if (_pending is { } plan) await ExecuteAsync(plan); });
     private void Cancel_Click(object sender, RoutedEventArgs e) => _scan?.Cancel();
 
@@ -177,7 +180,7 @@ public sealed partial class FileToolsView : UserControl
         _pending = null;
         ProcessList.ItemsSource = null;
         ScanWarnings.Visibility = Visibility.Collapsed;
-        LockSummary.Text = "路径已更改，请重新查找占用。";
+        LockSummary.Text = "移动或删除失败时，会自动检查并在这里显示占用进程。";
         UpdateActions();
     }
 

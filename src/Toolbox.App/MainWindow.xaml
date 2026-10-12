@@ -23,7 +23,7 @@
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock Text="工具箱" FontSize="22" FontWeight="SemiBold" Foreground="#F1F7F4" />
-            <TextBlock Text="TOOLBOX  /  0.1.3" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
+            <TextBlock Text="TOOLBOX  /  0.1.4" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
           </StackPanel>
         </StackPanel>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">

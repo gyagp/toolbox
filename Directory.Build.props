@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <Authors>Toolbox contributors; Shike contributors</Authors>
     <RepositoryUrl>https://github.com/gyagp/toolbox</RepositoryUrl>
   </PropertyGroup>

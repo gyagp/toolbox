@@ -27,7 +27,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.1.3' }
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.1.4' }
           ./scripts/package.ps1 -Version $version
       - name: Verify packaged startup
         shell: pwsh

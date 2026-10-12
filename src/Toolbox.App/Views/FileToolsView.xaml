@@ -29,7 +29,6 @@
           <StackPanel Orientation="Horizontal" Spacing="10">
             <Button x:Name="MoveButton" Content="移动" Click="Move_Click" Style="{StaticResource AccentButtonStyle}" MinWidth="100" />
             <Button x:Name="DeleteButton" Content="移入回收站" Click="Delete_Click" />
-            <Button x:Name="InspectButton" Content="查找占用" Click="Inspect_Click" />
           </StackPanel>
           <TextBlock Text="不会自动覆盖或合并同名内容。删除默认使用 Windows 回收站。" TextWrapping="Wrap" FontSize="12" Foreground="#78867F" />
         </StackPanel>
@@ -43,7 +42,7 @@
       <Border Background="White" BorderBrush="#E2E8E3" BorderThickness="1" CornerRadius="16" Padding="20">
         <StackPanel Spacing="14">
           <TextBlock Text="占用进程" FontSize="20" FontWeight="SemiBold" Foreground="#1E3027" />
-          <TextBlock x:Name="LockSummary" Text="选择路径后点击“查找占用”；移动或删除失败时也会自动检查。" TextWrapping="Wrap" Foreground="#78867F" FontSize="13" />
+          <TextBlock x:Name="LockSummary" Text="移动或删除失败时，会自动检查并在这里显示占用进程。" TextWrapping="Wrap" Foreground="#78867F" FontSize="13" />
           <ListView x:Name="ProcessList" SelectionMode="Multiple" IsMultiSelectCheckBoxEnabled="True" MaxHeight="320" SelectionChanged="Process_SelectionChanged">
             <ListView.ItemTemplate>
               <DataTemplate>
