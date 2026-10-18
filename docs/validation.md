@@ -2,6 +2,22 @@
 
 ## 本次 Toolbox 验证（2026-10-12）
 
+### v0.1.6 磁盘清理验证
+
+- Release 构建通过，0 警告、0 错误；Core 71 项、Windows 56 项集成断言通过。
+- 新增 28 项磁盘清理断言：旧临时文件和只读文件内容/修改时间保持、占用文件不受影响、脱机项跳过、取消、时间/条目上限、缺失与不可读区分、缩略图匹配范围、目录联接及其祖先跳过、ACL 拒绝、TEMP/TMP 重定向隔离；原生启动参数只允许盘符，系统绝对路径、可见界面、不提权或自动确认。
+- 对本机系统盘执行一次只读扫描：容量、六类缓存和 `SHQueryRecycleBinW` 结果正常；受限目录显示不完整或无法统计，没有执行清理。
+- `--cleanup-test` 验证工具导航、扫描期间操作禁用、离开页面取消、丢弃取消结果、错误提示与成功重试；渲染完整/部分/不可读状态以及普通和窄窗口。诊断使用合成结果，不启动 Windows 清理。
+- 看图器 33 项集成断言再次通过，包括 GIF 播放与暂停、全屏翻图、Esc 恢复、文件启动和切换工具。
+- 不以文件较旧、后缀为 `.tmp` 或位于缓存目录就宣称可删；没有删除计划或可释放空间承诺。
+- Windows 磁盘清理的最终类别选择、确认和删除没有代替用户执行；启动命令按 [Microsoft cleanmgr 文档](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cleanmgr) 限制为交互式 `/d`。本版本没有重测完整截图/滚动捕获，也没有修复下述滚动拼接已知限制。
+
+```powershell
+./artifacts/publish/Toolbox.exe --cleanup-test ./artifacts/cleanup-test
+# 可选：只读查看某盘的占用估算（不会清理）
+dotnet run --project tests/Toolbox.Platform.Tests -c Release -- --cleanup-inspect 'C:\'
+```
+
 ### v0.1.5 增量验证（2026-10-13）
 
 - Core 共 71 项断言通过，新增无参数启动、带空格/中文/大写扩展名的图片参数、相对路径、全屏参数和非法参数校验。

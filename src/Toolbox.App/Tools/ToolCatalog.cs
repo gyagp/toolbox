@@ -1,6 +1,6 @@
 namespace Toolbox.App.Tools;
 
-internal enum ToolId { Overview, Screenshot, ScrollCapture, Recording, Library, FileManager, ImageViewer }
+internal enum ToolId { Overview, Screenshot, ScrollCapture, Recording, Library, FileManager, ImageViewer, DiskCleanup }
 internal sealed record ToolDefinition(ToolId Id, string Title, string Description, string Glyph, string Category);
 
 internal static class ToolCatalog
@@ -13,6 +13,7 @@ internal static class ToolCatalog
         new(ToolId.Recording, "屏幕录制", "录制显示器，支持系统声音、麦克风与暂停。", "\uE714", "屏幕与媒体"),
         new(ToolId.ImageViewer, "图片查看器", "浏览常用图片格式，播放 GIF、缩放与连续看图。", "\uE91B", "屏幕与媒体"),
         new(ToolId.Library, "捕获内容库", "预览、搜索和整理截图与录屏，恢复最近删除。", "\uE8B7", "屏幕与媒体"),
-        new(ToolId.FileManager, "文件处理", "移动、删除文件或文件夹，查找并处理占用进程。", "\uE8B7", "文件与存储")
+        new(ToolId.FileManager, "文件处理", "移动、删除文件或文件夹，查找并处理占用进程。", "\uE8B7", "文件与存储"),
+        new(ToolId.DiskCleanup, "磁盘清理", "只读检查磁盘占用，交给 Windows 审查清理。", "\uEDA2", "文件与存储")
     ];
 }

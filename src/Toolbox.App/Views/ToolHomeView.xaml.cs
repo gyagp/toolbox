@@ -23,12 +23,12 @@ public sealed partial class ToolHomeView : UserControl
             {
                 if (index % 2 == 0) grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
                 var icon = new FontIcon { Glyph = tool.Glyph, FontSize = 20,
-                    Foreground = new SolidColorBrush(tool.Id == ToolId.FileManager ? ColorHelper.FromArgb(255, 71, 104, 165) : ColorHelper.FromArgb(255, 19, 127, 112)) };
+                    Foreground = new SolidColorBrush(tool.Id is ToolId.FileManager or ToolId.DiskCleanup ? ColorHelper.FromArgb(255, 71, 104, 165) : ColorHelper.FromArgb(255, 19, 127, 112)) };
                 var content = new StackPanel { Spacing = 12 };
                 var heading = new Grid { ColumnSpacing = 12 };
                 heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); heading.ColumnDefinitions.Add(new()); heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
                 heading.Children.Add(new Border { Child = icon, Width = 38, Height = 38, CornerRadius = new(10),
-                    Background = new SolidColorBrush(tool.Id == ToolId.FileManager ? ColorHelper.FromArgb(255, 236, 241, 251) : ColorHelper.FromArgb(255, 235, 246, 240)) });
+                    Background = new SolidColorBrush(tool.Id is ToolId.FileManager or ToolId.DiskCleanup ? ColorHelper.FromArgb(255, 236, 241, 251) : ColorHelper.FromArgb(255, 235, 246, 240)) });
                 var title = new TextBlock { Text = tool.Title, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
                 Grid.SetColumn(title, 1); heading.Children.Add(title);
                 var arrow = new FontIcon { Glyph = "\uE76C", FontSize = 11, Foreground = new SolidColorBrush(ColorHelper.FromArgb(255, 151, 168, 157)) };

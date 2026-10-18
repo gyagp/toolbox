@@ -81,6 +81,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            DiskCleanupPage.Deactivate();
             LibraryPage.Dispose();
             ImageViewerPage.Deactivate();
             _timer.Stop();
@@ -145,6 +146,7 @@ public sealed partial class MainWindow : Window
     {
         if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy) return;
         if (ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
+        DiskCleanupPage.Deactivate();
         LibraryPage.Deactivate();
         ImageViewerPage.Deactivate();
         SetMode(CaptureMode.Selecting);
@@ -315,10 +317,14 @@ public sealed partial class MainWindow : Window
         if (id != ToolId.ImageViewer) Title = "Toolbox · 工具箱";
         LibraryPage.Deactivate();
         if (id != ToolId.ImageViewer) ImageViewerPage.Deactivate();
+        if (id != ToolId.DiskCleanup) DiskCleanupPage.Deactivate();
         foreach (var (key, button) in _navigation) button.IsChecked = key == id;
+        ToolNavigation.UpdateLayout();
+        _navigation[id].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
         HomePage.Visibility = id == ToolId.Overview ? Visibility.Visible : Visibility.Collapsed;
         LibraryPage.Visibility = id == ToolId.Library ? Visibility.Visible : Visibility.Collapsed;
         FileToolsPage.Visibility = id == ToolId.FileManager ? Visibility.Visible : Visibility.Collapsed;
+        DiskCleanupPage.Visibility = id == ToolId.DiskCleanup ? Visibility.Visible : Visibility.Collapsed;
         ImageViewerPage.Visibility = id == ToolId.ImageViewer ? Visibility.Visible : Visibility.Collapsed;
         var capture = id is ToolId.Screenshot or ToolId.ScrollCapture or ToolId.Recording;
         CapturePage.Visibility = capture ? Visibility.Visible : Visibility.Collapsed;
@@ -334,6 +340,7 @@ public sealed partial class MainWindow : Window
         }
         if (id == ToolId.Library) await LibraryPage.ActivateAsync(path);
         if (id == ToolId.ImageViewer) await ImageViewerPage.ActivateAsync();
+        if (id == ToolId.DiskCleanup) DiskCleanupPage.Activate();
     }
 
     internal async Task OpenImageArgumentsAsync(IEnumerable<string> arguments)

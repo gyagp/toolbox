@@ -4,5 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Toolbox.Core/Toolbox.Core.csproj" />
+    <InternalsVisibleTo Include="Toolbox.Platform.Tests" />
   </ItemGroup>
 </Project>

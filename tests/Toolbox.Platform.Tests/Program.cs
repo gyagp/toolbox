@@ -3,6 +3,12 @@ using System.Reflection;
 using Toolbox.Core;
 using Toolbox.Platform;
 
+if (args.Length == 2 && args[0] == "--cleanup-inspect")
+{
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(DiskCleanupInspector.Scan(args[1]), new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--inspect")
 {
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(LockInspector.Inspect(args[1]), new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
@@ -116,6 +122,7 @@ try
     try { LockInspector.Inspect(source, cancelled.Token); } catch (OperationCanceledException) { canceled = true; }
     Check(canceled, "Large folder scans support cancellation");
     ImageAssociationTests.Run(Check);
+    DiskCleanupTests.Run(Check);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally
