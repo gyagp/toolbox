@@ -1,6 +1,6 @@
 namespace Toolbox.Core;
 
-public enum FileAction { Move, Recycle }
+public enum FileAction { Move, Recycle, PermanentDelete }
 
 /// <summary>Validated, immutable intent. Execution revalidates it immediately before use.</summary>
 public sealed record FileActionPlan(FileAction Action, string Source, string? DestinationFolder)
@@ -17,11 +17,12 @@ public sealed record FileActionPlan(FileAction Action, string Source, string? De
 
     public static FileActionPlan Create(FileAction action, string source, string? destinationFolder = null)
     {
+        if (!Enum.IsDefined(action)) throw new ArgumentOutOfRangeException(nameof(action));
         source = Normalize(source);
         if (!File.Exists(source) && !Directory.Exists(source)) throw new FileNotFoundException("源文件或文件夹不存在，或当前账户无法访问。", source);
         if (string.Equals(source, Path.GetPathRoot(source), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("不能移动或删除整个磁盘或共享根目录。");
-        if (action == FileAction.Recycle) return new(action, source, null);
+        if (action is FileAction.Recycle or FileAction.PermanentDelete) return new(action, source, null);
         var folder = Normalize(destinationFolder ?? "");
         if (!Directory.Exists(folder)) throw new DirectoryNotFoundException("请选择已存在的目标文件夹。");
         var destination = Path.Combine(folder, Path.GetFileName(source));

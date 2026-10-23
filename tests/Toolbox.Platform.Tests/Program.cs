@@ -123,6 +123,8 @@ try
     Check(canceled, "Large folder scans support cancellation");
     ImageAssociationTests.Run(Check);
     DiskCleanupTests.Run(Check);
+    await PermanentDeleteTests.RunAsync(Check);
+    await FileOperationCancellationTests.RunAsync(Check);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally

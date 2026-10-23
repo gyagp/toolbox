@@ -1,0 +1,85 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Toolbox.Core;
+
+namespace Toolbox.App.Views;
+
+public sealed partial class FileToolsView
+{
+    internal async Task VerifyPermanentDeleteUiAsync(string fixture, Func<FrameworkElement, string, Task> render)
+    {
+        var plan = FileActionPlan.Create(FileAction.PermanentDelete, fixture);
+        SourcePath.Text = fixture;
+        await RunAsync(async () =>
+        {
+            if (PermanentDeleteButton.IsEnabled || DeleteButton.IsEnabled || MoveButton.IsEnabled)
+                throw new Exception("File actions must be disabled during confirmation.");
+            var (dialog, confirmation) = CreatePermanentDeleteDialog(plan);
+            if (dialog.IsPrimaryButtonEnabled || dialog.DefaultButton != ContentDialogButton.Close)
+                throw new Exception("Permanent deletion must start disabled and default to cancel.");
+            var showing = dialog.ShowAsync();
+            try
+            {
+                await Task.Delay(200);
+                await render(dialog, "permanent-confirmation.png");
+                confirmation.Text = "incorrect-name";
+                await Task.Delay(50);
+                if (dialog.IsPrimaryButtonEnabled) throw new Exception("An incorrect name enabled permanent deletion.");
+                confirmation.Text = Path.GetFileName(fixture);
+                await Task.Delay(50);
+                if (!dialog.IsPrimaryButtonEnabled) throw new Exception("The exact name did not enable confirmation.");
+                confirmation.Text = "";
+                await Task.Delay(50);
+                if (dialog.IsPrimaryButtonEnabled) throw new Exception("Clearing the name left permanent deletion enabled.");
+            }
+            finally { dialog.Hide(); }
+            if (await showing == ContentDialogResult.Primary) throw new Exception("Dismissal confirmed deletion.");
+        });
+        // RunAsync catches UI failures for ordinary users; propagate any diagnostic error.
+        if (OperationStatus.IsOpen && OperationStatus.Severity == InfoBarSeverity.Error)
+            throw new Exception(OperationStatus.Message);
+        if (!File.Exists(fixture) || !PermanentDeleteButton.IsEnabled || _pending is not null)
+            throw new Exception("Canceling must preserve the file and leave no pending deletion.");
+        using (var held = new FileStream(fixture, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            // Only this fixture is used; bypass its dialog to exercise failure diagnosis.
+            await RunAsync(() => ExecuteAsync(plan, permanentDeleteConfirmed: true));
+            if (_pending?.Action != FileAction.PermanentDelete || !RetryButton.IsEnabled ||
+                !Equals(RetryButton.Content, "重试彻底删除…") || OperationStatus.Severity != InfoBarSeverity.Error ||
+                !File.Exists(fixture) || ProcessList.SelectedItems.Count != 0 || TerminateButton.IsEnabled)
+                throw new Exception("Permanent-delete failure must diagnose locks, preserve intent and leave processes unselected.");
+        }
+        await render(this, "permanent-locks.png");
+        // A real retry must enter the typed confirmation path again; cancel it before
+        // any file operation. This also checks cancellation dismisses the modal.
+        var retry = RunAsync(() => ExecuteAsync(plan));
+        await Task.Delay(150);
+        if (_dialog is null || _dialog.IsPrimaryButtonEnabled || !IsBusy)
+            throw new Exception("Retry must require a fresh, initially disabled permanent-delete confirmation.");
+        RequestCancel();
+        await retry;
+        if (!File.Exists(fixture) || _pending is not null)
+            throw new Exception("Canceling retry confirmation must preserve the file and clear the pending action.");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = RunCancellationFixtureAsync(started);
+        await started.Task;
+        if (!CancelButton.IsEnabled || CancelButton.Visibility != Visibility.Visible)
+            throw new Exception("Active file operations must expose an enabled cancel button.");
+        ProgressText.Text = "正在移动，请稍候…";
+        await render(this, "file-operation-cancel.png");
+        Cancel_Click(this, new RoutedEventArgs());
+        await running;
+        if (IsBusy || _pending is not null || RetryButton.IsEnabled || !PermanentDeleteButton.IsEnabled ||
+            !OperationStatus.Title.Contains("已取消") || !File.Exists(fixture))
+            throw new Exception("Cancellation must clear pending actions, release the UI and preserve its fixture.");
+    }
+
+    internal Task RunCancellationFixtureAsync(TaskCompletionSource started)
+    {
+        return RunAsync(async () =>
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, _action!.Token);
+        });
+    }
+}

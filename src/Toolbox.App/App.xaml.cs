@@ -18,6 +18,8 @@ public partial class App : Application
         if (testIndex < 0) { testIndex = Array.IndexOf(arguments, "--image-test"); imageOnly = testIndex >= 0; }
         var cleanupOnly = false;
         if (testIndex < 0) { testIndex = Array.IndexOf(arguments, "--cleanup-test"); cleanupOnly = testIndex >= 0; }
+        var fileToolsOnly = false;
+        if (testIndex < 0) { testIndex = Array.IndexOf(arguments, "--file-tools-test"); fileToolsOnly = testIndex >= 0; }
         if (testIndex < 0)
         {
             var main = new MainWindow();
@@ -34,11 +36,12 @@ public partial class App : Application
             _window = main;
             main.Activate();
             if (startupOnly) await Task.Delay(500);
+            else if (fileToolsOnly) await main.RunFileToolsTestAsync(output);
             else if (cleanupOnly) await main.RunCleanupTestAsync(output);
             else if (imageOnly) await main.RunImageTestAsync(output, testIndex + 2 < arguments.Length ? Path.GetFullPath(arguments[testIndex + 2]) : Path.GetFullPath("tests/fixtures/images"));
             else if (libraryOnly) await main.RunLibraryTestAsync(output);
             else await main.RunSmokeTestAsync(output);
-            File.WriteAllText(Path.Combine(output, "result.txt"), startupOnly ? "PASS: packaged WinUI startup and resources.\n" : cleanupOnly ? "PASS: disk cleanup navigation and read-only preview rendering, complete/partial/unavailable states. No Windows cleanup was launched.\n" : imageOnly ? "PASS: image formats, GIF playback, fullscreen, keyboard navigation, file activation, corrupt files, and handle release.\n" : libraryOnly ? "PASS: library discovery, filtering, image preview, video playback/no autoplay, rename, delete, restore, file watching, empty state.\n" : "PASS: capture regression and content library integration.\n");
+            File.WriteAllText(Path.Combine(output, "result.txt"), startupOnly ? "PASS: packaged WinUI startup and resources.\n" : fileToolsOnly ? "PASS: typed permanent-delete confirmation and retry, cancel preserves file, lock diagnosis, sticky cancel controls, and native window-close cancellation.\n" : cleanupOnly ? "PASS: disk cleanup navigation and read-only preview rendering, complete/partial/unavailable states. No Windows cleanup was launched.\n" : imageOnly ? "PASS: image formats, GIF playback, fullscreen, keyboard navigation, file activation, corrupt files, and handle release.\n" : libraryOnly ? "PASS: library discovery, filtering, image preview, video playback/no autoplay, rename, delete, restore, file watching, empty state.\n" : "PASS: capture regression and content library integration.\n");
             Environment.ExitCode = 0;
         }
         catch (Exception error)

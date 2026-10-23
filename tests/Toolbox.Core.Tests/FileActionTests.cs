@@ -29,6 +29,13 @@ internal static class FileActionTests
             Reject(() => plan.Revalidate(), "Revalidation catches a new collision before retrying");
             check(File.ReadAllText(plan.Destination!) == "existing", "A collision never overwrites destination contents");
             check(FileActionPlan.Create(FileAction.Recycle, "\"" + file + "\"").Source == file, "Quoted absolute paths are accepted");
+            var permanent = FileActionPlan.Create(FileAction.PermanentDelete, "\"" + file + "\"", destination);
+            check(permanent.Action == FileAction.PermanentDelete && permanent.Destination is null && permanent.DestinationFolder is null &&
+                File.ReadAllText(file) == "keep", "Permanent-delete planning has no side effects and ignores move destination");
+            check(permanent.Revalidate() == permanent, "Permanent-delete retry retains its action and source");
+            Reject(() => FileActionPlan.Create(FileAction.PermanentDelete, Path.GetPathRoot(root)!), "Reject permanent deletion of a drive root");
+            Reject(() => FileActionPlan.Create(FileAction.PermanentDelete, Path.Combine(root, "missing")), "Reject permanent deletion of a missing source");
+            Reject(() => FileActionPlan.Create((FileAction)99, file, destination), "Reject unknown actions instead of inferring deletion");
             Reject(() => FileActionPlan.Normalize("relative.txt"), "Reject ambiguous relative paths");
         }
         finally

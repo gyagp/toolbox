@@ -3,15 +3,16 @@ using Toolbox.Core;
 
 namespace Toolbox.Platform;
 
-/// <summary>Use Explorer's move/recycle implementation, including cross-volume folders.</summary>
+/// <summary>Use Explorer's move, recycle and explicitly confirmed permanent-delete implementation.</summary>
 public static class ShellFileOperation
 {
-    public static Task ExecuteAsync(FileActionPlan plan, nint owner = default)
+    public static Task ExecuteAsync(FileActionPlan plan, nint owner = default, CancellationToken cancellation = default, IProgress<int>? progress = null)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { Execute(plan.Revalidate(), owner); completion.TrySetResult(); }
+            try { cancellation.ThrowIfCancellationRequested(); Execute(plan.Revalidate(), owner, cancellation, progress); completion.TrySetResult(); }
+            catch (OperationCanceledException) { completion.TrySetCanceled(cancellation.IsCancellationRequested ? cancellation : new CancellationToken(true)); }
             catch (Exception error) { completion.TrySetException(error); }
         }) { IsBackground = true, Name = "Toolbox file operation" };
         thread.SetApartmentState(ApartmentState.STA);
@@ -19,24 +20,19 @@ public static class ShellFileOperation
         return completion.Task;
     }
 
-    private static void Execute(FileActionPlan plan, nint owner)
+    private static void Execute(FileActionPlan plan, nint owner, CancellationToken cancellation, IProgress<int>? updates)
     {
         IFileOperation? operation = null;
         IShellItem? source = null, destination = null;
         uint? subscription = null;
-        var progress = new OperationProgress();
+        var progress = new OperationProgress(cancellation, updates);
         try
         {
             operation = (IFileOperation)Activator.CreateInstance(Type.GetTypeFromCLSID(new("3AD05575-8857-4850-9277-11B85BDB8E09"), true)!)!;
             operation.SetOwnerWindow(owner);
             operation.Advise(progress, out var cookie);
             subscription = cookie;
-            // On errors return to Toolbox for lock diagnosis. Never silently overwrite
-            // collisions. A non-recyclable item requires an additional Windows warning.
-            const uint silent = 0x0004, allowUndo = 0x0040, noErrorUi = 0x0400, earlyFailure = 0x00100000;
-            const uint recycle = 0x00080000, wantNukeWarning = 0x4000, noConfirmation = 0x0010;
-            operation.SetOperationFlags(silent | allowUndo | noErrorUi | earlyFailure |
-                (plan.Action == FileAction.Recycle ? recycle | wantNukeWarning | noConfirmation : 0));
+            operation.SetOperationFlags(FlagsFor(plan.Action));
             source = Item(plan.Source);
             if (plan.Action == FileAction.Move)
             {
@@ -44,13 +40,22 @@ public static class ShellFileOperation
                 operation.MoveItem(source, destination, null, nint.Zero);
             }
             else operation.DeleteItem(source, nint.Zero);
+            cancellation.ThrowIfCancellationRequested();
             try { operation.PerformOperations(); }
-            catch (COMException error) { throw Failure(plan, progress.FailureCode ?? error.HResult); }
-            if (progress.FailureCode is { } failure) throw Failure(plan, failure);
+            catch (COMException error) { ThrowFailure(progress.FailureCode ?? error.HResult); }
+            if (progress.FailureCode is { } failure) ThrowFailure(failure);
             operation.GetAnyOperationsAborted(out var aborted);
-            if (aborted) throw Failure(plan, unchecked((int)0x80004004));
+            if (aborted) ThrowFailure(unchecked((int)0x80004004));
             if (File.Exists(plan.Source) || Directory.Exists(plan.Source))
                 throw new IOException("源路径仍然存在，操作尚未全部完成。请检查源与目标内容后重试。");
+
+            // A cancellation requested after completion does not retroactively undo success.
+            void ThrowFailure(int code)
+            {
+                if ((uint)code is 0x80004004 or 0x800704C7 or 0x80270000 or 0x80270001)
+                    throw new OperationCanceledException("Windows 文件操作已取消；已完成的步骤不会回滚。", cancellation);
+                throw Failure(plan, code);
+            }
         }
         finally
         {
@@ -63,6 +68,22 @@ public static class ShellFileOperation
             if (source is not null) Marshal.FinalReleaseComObject(source);
             if (operation is not null) Marshal.FinalReleaseComObject(operation);
         }
+    }
+
+    internal static uint FlagsFor(FileAction action)
+    {
+        // Return failures to Toolbox for lock diagnosis. Permanent deletion is only
+        // used after the view's explicit typed confirmation; never enable undo/recycle.
+        const uint silent = 0x0004, allowUndo = 0x0040, noErrorUi = 0x0400, earlyFailure = 0x00100000;
+        const uint recycle = 0x00080000, wantNukeWarning = 0x4000, noConfirmation = 0x0010;
+        var common = silent | noErrorUi | earlyFailure;
+        return action switch
+        {
+            FileAction.Move => common | allowUndo,
+            FileAction.Recycle => common | allowUndo | recycle | wantNukeWarning | noConfirmation,
+            FileAction.PermanentDelete => common | noConfirmation,
+            _ => throw new ArgumentOutOfRangeException(nameof(action))
+        };
     }
 
     private static IOException Failure(FileActionPlan plan, int code)
@@ -116,23 +137,33 @@ public static class ShellFileOperation
     }
 
     [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
-    public sealed class OperationProgress : IOperationProgress
+    public sealed class OperationProgress(CancellationToken cancellation = default, IProgress<int>? updates = null) : IOperationProgress
     {
         internal int? FailureCode { get; private set; }
+        private int _notifications;
+        private int ContinueOrCancel() => cancellation.IsCancellationRequested ? unchecked((int)0x80004004) : 0;
         private int Record(int result) { if (result < 0) FailureCode ??= result; return 0; }
-        public int StartOperations() => 0;
+        private int Completed(int result)
+        {
+            Record(result);
+            // Shell success statuses include scheduling notifications, not only completed
+            // mutations. This is a notification count, never a count of deleted files.
+            if (result >= 0) updates?.Report(++_notifications);
+            return ContinueOrCancel();
+        }
+        public int StartOperations() => ContinueOrCancel();
         public int FinishOperations(int result) => Record(result);
-        public int PreRenameItem(uint flags, IShellItem? item, string? name) => 0;
-        public int PostRenameItem(uint flags, IShellItem? item, string? name, int result, IShellItem? created) => Record(result);
-        public int PreMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => 0;
-        public int PostMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name, int result, IShellItem? created) => Record(result);
-        public int PreCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => 0;
-        public int PostCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name, int result, IShellItem? created) => Record(result);
-        public int PreDeleteItem(uint flags, IShellItem? item) => 0;
-        public int PostDeleteItem(uint flags, IShellItem? item, int result, IShellItem? created) => Record(result);
-        public int PreNewItem(uint flags, IShellItem? destination, string? name) => 0;
-        public int PostNewItem(uint flags, IShellItem? destination, string? name, string? template, uint attributes, int result, IShellItem? created) => Record(result);
-        public int UpdateProgress(uint total, uint completed) => 0;
+        public int PreRenameItem(uint flags, IShellItem? item, string? name) => ContinueOrCancel();
+        public int PostRenameItem(uint flags, IShellItem? item, string? name, int result, IShellItem? created) => Completed(result);
+        public int PreMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => ContinueOrCancel();
+        public int PostMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name, int result, IShellItem? created) => Completed(result);
+        public int PreCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => ContinueOrCancel();
+        public int PostCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name, int result, IShellItem? created) => Completed(result);
+        public int PreDeleteItem(uint flags, IShellItem? item) => ContinueOrCancel();
+        public int PostDeleteItem(uint flags, IShellItem? item, int result, IShellItem? created) => Completed(result);
+        public int PreNewItem(uint flags, IShellItem? destination, string? name) => ContinueOrCancel();
+        public int PostNewItem(uint flags, IShellItem? destination, string? name, string? template, uint attributes, int result, IShellItem? created) => Completed(result);
+        public int UpdateProgress(uint total, uint completed) => ContinueOrCancel();
         public int ResetTimer() => 0;
         public int PauseTimer() => 0;
         public int ResumeTimer() => 0;

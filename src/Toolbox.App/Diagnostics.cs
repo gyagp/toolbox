@@ -55,10 +55,10 @@ public sealed partial class MainWindow
         await VerifyLibraryAsync(output, movie.Path);
     }
 
-    private async Task RenderUiAsync(string output, string name)
+    private async Task RenderUiAsync(string output, string name, FrameworkElement? element = null)
     {
         var bitmap = new RenderTargetBitmap();
-        await bitmap.RenderAsync((FrameworkElement)Content);
+        await bitmap.RenderAsync(element ?? (FrameworkElement)Content);
         var data = (await bitmap.GetPixelsAsync()).ToArray();
         var frame = new PixelFrame(bitmap.PixelWidth, bitmap.PixelHeight, data);
         var path = await ImageStore.SaveAsync(frame, output);

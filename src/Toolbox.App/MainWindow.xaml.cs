@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
     private SessionWindow? _sessionWindow;
     private SelectionWindow? _selectionWindow;
     private bool _paused, _recordingStarted, _closeWhenDone;
+    private bool _closeAfterFileOperation;
     private readonly CaptureLibrary _library;
     private readonly Dictionary<ToolId, ToggleButton> _navigation = [];
     private AppWindowPresenter? _windowedPresenter;
@@ -46,7 +47,11 @@ public sealed partial class MainWindow : Window
         ImageViewerPage.FullScreenRequested += full => SafeAction(() => SetViewerFullScreen(full));
         ImageViewerPage.ImageOpened += path => Title = $"{Path.GetFileName(path)} · Toolbox";
         RootGrid.SizeChanged += (_, e) => ShortcutHints.Visibility = e.NewSize.Height < 740 ? Visibility.Collapsed : Visibility.Visible;
-        FileToolsPage.BusyChanged += _ => UpdateNavigationAvailability();
+        FileToolsPage.BusyChanged += busy =>
+        {
+            UpdateNavigationAvailability();
+            if (!busy && _closeAfterFileOperation) DispatcherQueue.TryEnqueue(Close);
+        };
         BuildNavigation();
         HomePage.ToolSelected += async id => await NavigateAsync(id);
         _windowProc = WindowProc;
@@ -71,7 +76,9 @@ public sealed partial class MainWindow : Window
             if (FileToolsPage.IsBusy)
             {
                 e.Cancel = true;
-                Status("文件工具正在处理", "请先取消查询或等待当前文件操作完成。");
+                _closeAfterFileOperation = true;
+                FileToolsPage.RequestCancel();
+                Status("正在取消后关闭", "等待 Windows 停止当前步骤后自动关闭。已经完成的移动或删除不会回滚。");
                 return;
             }
             if (_mode == CaptureMode.Idle) return;

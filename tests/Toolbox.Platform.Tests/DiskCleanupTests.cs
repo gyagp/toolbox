@@ -130,7 +130,7 @@ internal static class DiskCleanupTests
         }
     }
 
-    private static void CreateJunction(string path, string target)
+    internal static void CreateJunction(string path, string target)
     {
         var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
         { UseShellExecute = false, CreateNoWindow = true, RedirectStandardError = true, RedirectStandardOutput = true };

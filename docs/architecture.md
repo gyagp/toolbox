@@ -15,6 +15,10 @@
 
 `ShellFileOperation` 在专用 STA 线程调用 `IFileOperation`，支持文件/文件夹移动与回收站删除。Core 中的 `FileActionPlan` 保存用户确认的意图，执行和重试前检查源、目标、目录自包含与冲突。Shell 错误回到页面进行占用诊断；无法回收的内容保留 Windows 的额外警告。文件操作期间暂停工具切换、捕获快捷键与窗口关闭，避免操作交叉或中断。
 
+`FileAction.PermanentDelete` 是独立意图，不复用回收标记。`ShellFileOperation.FlagsFor` 明确分离移动、回收和彻底删除；彻底删除不传 `FOF_ALLOWUNDO` 或 `FOFX_RECYCLEONDELETE`。继续使用 Windows Shell 处理目录及联接，不添加手写递归删除或失败后自动升级删除模式。`FileToolsView` 以完整路径和名称输入确认每次彻底删除及重试，默认取消；结束进程重试路径先确认删除，之后才结束用户选择的进程。批量目录删除可能部分完成，界面明确提示，不能回滚已删除内容。未知动作在规划和 Shell 参数层均拒绝。
+
+文件工具每次交互创建一个取消令牌，传入 `IFileOperationProgressSink` 的操作前、操作后和进度回调，取消时返回失败 HRESULT 停止后续处理。取消不是线程强杀，也不尝试回滚已完成文件。Shell 原生取消 HRESULT 转为取消任务，界面不会继续查锁或自动重试。占用扫描共享取消信号；确认对话框会关闭。主窗口在收到关闭请求后发出取消，等 `BusyChanged(false)` 才关闭。底部固定取消条不随内容滚动；Windows 的单步调用可能有取消延迟。
+
 `tests/Toolbox.Platform.Tests` 只启动自建的文件占用辅助进程，验证实际占用定位、选择结束、PID 创建时间校验、移动重试和回收站操作；清理仅限自己的进程与临时目录。
 
 `ShellFileOperation` 的进度回调保留每个项目的原始 HRESULT，向用户区分共享冲突、源/目标权限和取消，而不只显示笼统的失败。
