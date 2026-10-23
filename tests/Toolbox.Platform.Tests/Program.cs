@@ -125,6 +125,7 @@ try
     DiskCleanupTests.Run(Check);
     await PermanentDeleteTests.RunAsync(Check);
     await FileOperationCancellationTests.RunAsync(Check);
+    await AutomaticRecoveryTests.RunAsync(Check, root, HoldAsync);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally

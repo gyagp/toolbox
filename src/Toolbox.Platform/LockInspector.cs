@@ -109,8 +109,43 @@ public static class LockInspector
         return new(combined.OrderBy(p => p.Name).ThenBy(p => p.Id).ToArray(), scanned, warnings, directoriesScanned);
     }
 
-    public static async Task TerminateAsync(LockingProcess selected)
+    public static Task TerminateAsync(LockingProcess selected, CancellationToken cancellation = default) =>
+        TerminateCoreAsync(selected, cancellation, automatic: false);
+
+    internal static async Task<bool> TerminateIfStillUsingAsync(LockingProcess selected, string source, CancellationToken cancellation)
     {
+        cancellation.ThrowIfCancellationRequested();
+        if (FileOperationRecovery.AutomaticSkipReason(selected) is { } reason) throw new InvalidOperationException(reason);
+        source = FileActionPlan.Normalize(source);
+        foreach (var resource in selected.Files.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var path = FileActionPlan.Normalize(resource);
+            if (!path.Equals(source, StringComparison.OrdinalIgnoreCase) &&
+                !path.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+            // Check ancestors from the volume down before following any path segment.
+            var ancestors = new Stack<string>();
+            for (var entry = new DirectoryInfo(path); entry is not null; entry = entry.Parent) ancestors.Push(entry.FullName);
+            var safe = true;
+            while (ancestors.TryPop(out var ancestor))
+            {
+                if ((File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) == 0) continue;
+                safe = false; break;
+            }
+            if (!safe) continue;
+            var attributes = File.GetAttributes(path);
+            var stillUsing = (attributes & FileAttributes.Directory) != 0
+                ? DirectoryLockQuery.Inspect(path, cancellation).Any(p => p.Id == selected.Id && p.StartTime == selected.StartTime)
+                : Query([path], cancellation).Any(p => p.Process.Id == selected.Id && p.Process.StartTime == selected.StartTime);
+            if (!stillUsing) continue;
+            return await TerminateCoreAsync(selected, cancellation, automatic: true);
+        }
+        return false;
+    }
+
+    private static async Task<bool> TerminateCoreAsync(LockingProcess selected, CancellationToken cancellation, bool automatic)
+    {
+        cancellation.ThrowIfCancellationRequested();
         // PID reuse must never cause us to kill a different process than the user selected.
         if (selected.Id <= 4 || selected.Id == Environment.ProcessId)
             throw new InvalidOperationException("不能结束系统进程或 Toolbox 自身。");
@@ -118,17 +153,26 @@ public static class LockInspector
             throw new InvalidOperationException("无法核对进程身份，不能安全结束。请重新查询或手动关闭该程序。");
         Process process;
         try { process = Process.GetProcessById(selected.Id); }
-        catch (ArgumentException) { return; } // It already exited.
+        catch (ArgumentException) { return false; } // It already exited.
         using (process)
         {
-            if (process.HasExited) return;
-            if (process.StartTime.ToUniversalTime().ToFileTimeUtc() != selected.StartTime)
+            if (process.HasExited) return false;
+            // Pin one kernel handle for identity, critical-state checks and termination.
+            var handle = process.Handle;
+            if (!GetProcessTimes(handle, out var started, out _, out _, out _)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (started != selected.StartTime)
                 throw new InvalidOperationException($"PID {selected.Id} 已被其他进程复用，请重新查找占用。");
-            if (!IsProcessCritical(process.Handle, out var critical))
+            using var current = Process.GetCurrentProcess();
+            if (automatic && (!string.IsNullOrEmpty(selected.ServiceName) || process.SessionId != current.SessionId ||
+                process.ProcessName.ToLowerInvariant() is "svchost" or "services" or "lsass" or "csrss" or "wininit" or "winlogon" or "smss" or "dwm" or "sihost" or "fontdrvhost"))
+                throw new InvalidOperationException("不自动结束系统服务、桌面基础进程或其他会话的进程。");
+            if (!IsProcessCritical(handle, out var critical))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "无法检查进程的系统保护状态。");
             if (critical) throw new InvalidOperationException("不能结束 Windows 关键进程。");
-            process.Kill(entireProcessTree: false);
+            cancellation.ThrowIfCancellationRequested();
+            if (!TerminateProcess(handle, 1)) throw new Win32Exception(Marshal.GetLastWin32Error());
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            return true;
         }
     }
 
@@ -186,4 +230,10 @@ public static class LockInspector
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsProcessCritical(nint process, [MarshalAs(UnmanagedType.Bool)] out bool critical);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessTimes(nint process, out long created, out long exited, out long kernel, out long user);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateProcess(nint process, uint exitCode);
 }

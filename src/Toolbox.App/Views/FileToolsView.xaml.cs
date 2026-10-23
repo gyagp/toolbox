@@ -14,6 +14,7 @@ public sealed partial class FileToolsView : UserControl
     private CancellationTokenSource? _scan;
     private CancellationTokenSource? _action;
     private ContentDialog? _dialog;
+    private int _activityVersion;
     internal bool IsBusy { get; private set; }
     internal event Action<bool>? BusyChanged;
 
@@ -24,7 +25,7 @@ public sealed partial class FileToolsView : UserControl
     {
         IsBusy = busy;
         SourcePath.IsEnabled = DestinationPath.IsEnabled = PickSourceButton.IsEnabled =
-            PickDestinationButton.IsEnabled = MoveButton.IsEnabled = DeleteButton.IsEnabled = PermanentDeleteButton.IsEnabled = ProcessList.IsEnabled = !busy;
+            PickDestinationButton.IsEnabled = MoveButton.IsEnabled = DeleteButton.IsEnabled = PermanentDeleteButton.IsEnabled = ProcessList.IsEnabled = AutoReleaseCheck.IsEnabled = !busy;
         ProgressPanel.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         BusyRing.IsActive = busy;
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
@@ -53,6 +54,9 @@ public sealed partial class FileToolsView : UserControl
         if (IsBusy) return;
         using var actionCancellation = new CancellationTokenSource();
         _action = actionCancellation;
+        _activityVersion++;
+        ActivityText.Text = "";
+        ActivityPanel.Visibility = Visibility.Collapsed;
         OperationStatus.IsOpen = false;
         ProgressText.Text = "正在准备…";
         SetBusy(true);
@@ -63,7 +67,7 @@ public sealed partial class FileToolsView : UserControl
             ProcessList.ItemsSource = null;
             ScanWarnings.Visibility = Visibility.Collapsed;
             LockSummary.Text = "操作已取消。请核对剩余内容后重新选择操作。";
-            Notify("操作已取消", "已停止后续处理；已完成的移动或删除不会自动回滚。请核对源路径、目标路径或回收站中的内容。", InfoBarSeverity.Warning);
+            Notify("操作已取消", "已停止后续处理；已完成的移动或删除不会自动回滚，已结束的进程不会恢复。请核对源路径、目标路径或回收站中的内容。", InfoBarSeverity.Warning);
         }
         catch (Exception error) { Notify("操作未完成", error.Message, InfoBarSeverity.Error); }
         finally { _action = null; SetBusy(false); }
@@ -135,11 +139,33 @@ public sealed partial class FileToolsView : UserControl
             _ => "正在彻底删除，请稍候…"
         };
         _pending = plan;
+        ProcessList.ItemsSource = null;
+        ScanWarnings.Visibility = Visibility.Collapsed;
         try
         {
             // A retry revalidates the original intent; no fresh destructive action is inferred.
             var token = _action?.Token ?? CancellationToken.None;
-            await ShellFileOperation.ExecuteAsync(plan, _owner, token);
+            var action = _action;
+            var version = _activityVersion;
+            var activity = new Progress<string>(message =>
+            {
+                if (version != _activityVersion) return;
+                ActivityPanel.Visibility = Visibility.Visible;
+                ActivityText.Text += $"{DateTime.Now:HH:mm:ss}  {message}\n";
+            });
+            var progress = new Progress<string>(message =>
+            {
+                if (_action == action && !token.IsCancellationRequested) ProgressText.Text = message;
+            });
+            var result = await FileOperationRecovery.ExecuteAsync(plan, AutoReleaseCheck.IsChecked == true, _owner, token, activity, progress);
+            if (!result.Succeeded)
+            {
+                if (result.Locks is { } locks) ShowLocks(locks);
+                else LockSummary.Text = "占用查询未完成，请查看处理记录。";
+                Notify("操作未完成", result.Error!.Message + (plan.Action == FileAction.PermanentDelete
+                    ? "\n文件夹可能已有部分内容被彻底删除，无法通过回收站恢复；请核对剩余内容后再重试。" : ""), InfoBarSeverity.Error);
+                return;
+            }
             _pending = null;
             ProcessList.ItemsSource = null;
             ScanWarnings.Visibility = Visibility.Collapsed;
@@ -178,19 +204,29 @@ public sealed partial class FileToolsView : UserControl
         {
             var progress = new Progress<int>(count => { if (_scan == scan && !scan.IsCancellationRequested) ProgressText.Text = $"已检查 {count} 个文件…"; });
             var report = await Task.Run(() => LockInspector.Inspect(path, scan.Token, progress));
-            ProcessList.ItemsSource = report.Processes;
-            LockSummary.Text = report.Processes.Count > 0
-                ? $"检查了 {report.DirectoriesScanned} 个目录和 {report.FilesScanned} 个文件，发现 {report.Processes.Count} 个关联进程。勾选你要结束的进程。"
-                : $"检查了 {report.DirectoriesScanned} 个目录和 {report.FilesScanned} 个文件，未发现占用进程。可能是权限、驱动占用，或占用已解除；查询结果不保证文件一定可移动。";
-            ScanWarnings.Text = string.Join("\n", report.Warnings.Take(12)) +
-                (report.Warnings.Count > 12 ? $"\n另有 {report.Warnings.Count - 12} 条未列出的查询警告。" : "");
-            ScanWarnings.Visibility = report.Warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            // Results may be below the fold at high DPI. Measure the new rows before
-            // scrolling; calling BringIntoView before layout can silently do nothing.
-            UpdateLayout();
-            PageScroller.ChangeView(null, PageScroller.ScrollableHeight, null, true);
+            ShowLocks(report);
         }
         finally { _scan = null; CancelButton.Visibility = Visibility.Collapsed; }
+    }
+
+    private void ShowLocks(LockReport report)
+    {
+        ProcessList.ItemsSource = report.Processes;
+        LockSummary.Text = report.Processes.Count > 0
+            ? $"检查了 {report.DirectoriesScanned} 个目录和 {report.FilesScanned} 个文件，仍有 {report.Processes.Count} 个关联进程。可查看处理记录，或勾选后手动处理。"
+            : $"检查了 {report.DirectoriesScanned} 个目录和 {report.FilesScanned} 个文件，未发现占用进程。可能是权限、驱动占用，或占用已解除。";
+        ScanWarnings.Text = string.Join("\n", report.Warnings.Take(12)) +
+            (report.Warnings.Count > 12 ? $"\n另有 {report.Warnings.Count - 12} 条未列出的查询警告。" : "");
+        ScanWarnings.Visibility = report.Warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Error details and queued activity rows can change the measured height.
+        // Scroll after those UI updates so remaining owners are actually visible.
+        var version = _activityVersion;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (version != _activityVersion) return;
+            UpdateLayout();
+            PageScroller.ChangeView(null, PageScroller.ScrollableHeight, null, true);
+        });
     }
 
     private async void Move_Click(object sender, RoutedEventArgs e) => await RunAsync(async () =>
@@ -216,7 +252,8 @@ public sealed partial class FileToolsView : UserControl
         var selected = ProcessList.SelectedItems.Cast<LockingProcess>().ToArray();
         if (selected.Length == 0) return;
         if (!await ConfirmAsync("结束选中的进程？", string.Join("\n", selected.Select(p => p.Label)) +
-            "\n\n这些程序未保存的工作可能丢失。不会结束未勾选的进程或子进程。" + (_pending is null ? "" :
+            "\n\n这些程序未保存的工作可能丢失。不会按进程树批量结束。" +
+            (AutoReleaseCheck.IsChecked == true ? "\n自动处理已开启；重试时仍可能自动结束其他已确认的占用进程。" : "") + (_pending is null ? "" :
                 _pending.Action == FileAction.PermanentDelete ? $"\n结束成功后将重试彻底删除：\n{_pending.Source}\n不进入回收站。" : "\n结束成功后将重试刚才的文件操作。"), "结束进程")) return;
         var permanentDeleteConfirmed = false;
         if (_pending is { Action: FileAction.PermanentDelete } permanent)
@@ -229,7 +266,8 @@ public sealed partial class FileToolsView : UserControl
         foreach (var process in selected)
         {
             _action?.Token.ThrowIfCancellationRequested();
-            try { await LockInspector.TerminateAsync(process); }
+            try { await LockInspector.TerminateAsync(process, _action?.Token ?? CancellationToken.None); }
+            catch (OperationCanceledException) { throw; }
             catch (Exception error) { failures.Add($"{process.Label}：{error.Message}"); }
         }
         if (failures.Count > 0)
@@ -266,6 +304,9 @@ public sealed partial class FileToolsView : UserControl
     private void Path_Changed(object sender, TextChangedEventArgs e)
     {
         if (!_ready) return;
+        _activityVersion++;
+        ActivityText.Text = "";
+        ActivityPanel.Visibility = Visibility.Collapsed;
         _pending = null;
         ProcessList.ItemsSource = null;
         ScanWarnings.Visibility = Visibility.Collapsed;

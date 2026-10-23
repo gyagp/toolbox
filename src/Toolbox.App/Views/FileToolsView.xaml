@@ -34,9 +34,19 @@
             <Button x:Name="PermanentDeleteButton" Content="彻底删除…" Click="PermanentDelete_Click" Foreground="#A33E36" />
           </StackPanel>
           <TextBlock Text="不会自动覆盖或合并同名内容。“彻底删除”不进入回收站，需要输入名称确认。" TextWrapping="Wrap" FontSize="12" Foreground="#78867F" />
+          <CheckBox x:Name="AutoReleaseCheck" Content="遇到占用时自动结束相关进程并重试" IsChecked="True" FontSize="13" />
+          <TextBlock Text="相关程序未保存的工作可能丢失。仅处理仍在占用源路径的进程，最多自动重试两轮；系统关键进程、服务和身份不明的进程会跳过。" TextWrapping="Wrap" FontSize="12" Foreground="#927538" />
         </StackPanel>
       </Border>
       <InfoBar x:Name="OperationStatus" IsOpen="False" IsClosable="True" />
+      <Border x:Name="ActivityPanel" Background="#EDF5EF" CornerRadius="12" Padding="16" Visibility="Collapsed">
+        <StackPanel Spacing="8">
+          <TextBlock Text="处理记录" FontWeight="SemiBold" FontSize="14" />
+          <ScrollViewer MaxHeight="200" HorizontalScrollBarVisibility="Disabled">
+            <TextBlock x:Name="ActivityText" FontSize="12" Foreground="#526E5E" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+          </ScrollViewer>
+        </StackPanel>
+      </Border>
       <Border Background="White" BorderBrush="#E2E8E3" BorderThickness="1" CornerRadius="16" Padding="20">
         <StackPanel Spacing="14">
           <TextBlock Text="占用进程" FontSize="20" FontWeight="SemiBold" Foreground="#1E3027" />
@@ -56,7 +66,7 @@
             <Button x:Name="TerminateButton" Content="结束选中进程…" Click="Terminate_Click" IsEnabled="False" />
             <Button x:Name="RetryButton" Content="重试操作" Click="Retry_Click" IsEnabled="False" />
           </StackPanel>
-          <TextBlock Text="请先尝试关闭相关文件。结束进程可能丢失该程序未保存的工作；只处理你勾选并确认的进程。" TextWrapping="Wrap" FontSize="12" Foreground="#78867F" />
+          <TextBlock Text="自动处理后仍有占用时，可手动勾选并结束进程。取消上方勾选可关闭自动处理；手动结束仍需确认。" TextWrapping="Wrap" FontSize="12" Foreground="#78867F" />
         </StackPanel>
       </Border>
     </StackPanel>

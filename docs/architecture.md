@@ -11,11 +11,13 @@
 
 `Tools/ToolCatalog.cs` 定义工具标识、分组、名称、图标和简介。`ToolHomeView` 和侧栏从同一目录生成，`MainWindow.NavigateAsync` 负责选择对应页面。截图、长截图和录屏显示各自的控制区；捕获状态机、快捷键和原生捕获实现继续共用。新增工具时在目录添加一项，并接入其独立视图即可。
 
-`src/Toolbox.Platform` 是不依赖 WinUI 的 Windows 适配层：`LockInspector` 使用 Restart Manager 分批注册文件，有关联进程时逐文件确定对应关系。`DirectoryLockQuery` 使用 `NtQueryInformationFile(FileProcessIdsUsingFileInformation)` 查询目录本身，包括空目录和进程工作目录，不把自己的临时查询句柄列入结果；不支持的文件系统会报告查询警告。遍历不跟随链接，查询可取消。进程身份由 PID 与创建时间组成，结束前再次核对，并拒绝 Toolbox 自身和 Windows 关键进程。每次只结束用户选择的单个进程，不调用会批量关闭应用的 `RmShutdown`。
+`src/Toolbox.Platform` 是不依赖 WinUI 的 Windows 适配层：`LockInspector` 使用 Restart Manager 分批注册文件，有关联进程时逐文件确定对应关系。`DirectoryLockQuery` 使用 `NtQueryInformationFile(FileProcessIdsUsingFileInformation)` 查询目录本身，包括空目录和进程工作目录，不把自己的临时查询句柄列入结果；不支持的文件系统会报告查询警告。遍历不跟随链接，查询可取消。进程身份由 PID 与创建时间组成；结束前在同一个内核句柄上核对创建时间、关键进程标记并调用 `TerminateProcess`，避免分别打开 PID 时的竞态。拒绝 Toolbox 自身和 Windows 关键进程，不调用 `RmShutdown` 或按进程树批量结束。
+
+`FileOperationRecovery` 执行已经确认的原操作，失败后查询占用。默认自动处理仅对来源共享冲突 HRESULT（`0x80070020`、`0x80070021`、`0x80270027`）生效；其他错误只显示诊断。结束前再次检查路径范围及其祖先的重解析点，并重新查询对应文件/目录的当前占用身份。自动流程另跳过服务、桌面基础进程、其他会话及身份不明者。每轮结束前重新验证操作计划，部分移动产生目标冲突时不继续结束进程；最多两轮重试，同一 PID/创建时间最多尝试一次。自动重试沿用首次确认的模式和路径；用户发起的新一轮手动彻底删除重试仍要求输入名称。取消贯穿扫描、结束前和重试等待阶段；结束已发出的进程需等待其退出，最长 10 秒，不自动恢复进程。页面保留处理记录和自动处理开关。
 
 `ShellFileOperation` 在专用 STA 线程调用 `IFileOperation`，支持文件/文件夹移动与回收站删除。Core 中的 `FileActionPlan` 保存用户确认的意图，执行和重试前检查源、目标、目录自包含与冲突。Shell 错误回到页面进行占用诊断；无法回收的内容保留 Windows 的额外警告。文件操作期间暂停工具切换、捕获快捷键与窗口关闭，避免操作交叉或中断。
 
-`FileAction.PermanentDelete` 是独立意图，不复用回收标记。`ShellFileOperation.FlagsFor` 明确分离移动、回收和彻底删除；彻底删除不传 `FOF_ALLOWUNDO` 或 `FOFX_RECYCLEONDELETE`。继续使用 Windows Shell 处理目录及联接，不添加手写递归删除或失败后自动升级删除模式。`FileToolsView` 以完整路径和名称输入确认每次彻底删除及重试，默认取消；结束进程重试路径先确认删除，之后才结束用户选择的进程。批量目录删除可能部分完成，界面明确提示，不能回滚已删除内容。未知动作在规划和 Shell 参数层均拒绝。
+`FileAction.PermanentDelete` 是独立意图，不复用回收标记。`ShellFileOperation.FlagsFor` 明确分离移动、回收和彻底删除；彻底删除不传 `FOF_ALLOWUNDO` 或 `FOFX_RECYCLEONDELETE`。继续使用 Windows Shell 处理目录及联接，不添加手写递归删除或失败后自动升级删除模式。`FileToolsView` 以完整路径和名称输入确认首次彻底删除及手动重试，默认取消；开启自动处理时，原确认涵盖本轮操作的两次自动重试。手动结束进程重试路径先确认删除，之后才结束用户选择的进程。批量目录删除可能部分完成，界面明确提示，不能回滚已删除内容。未知动作在规划和 Shell 参数层均拒绝。
 
 文件工具每次交互创建一个取消令牌，传入 `IFileOperationProgressSink` 的操作前、操作后和进度回调，取消时返回失败 HRESULT 停止后续处理。取消不是线程强杀，也不尝试回滚已完成文件。Shell 原生取消 HRESULT 转为取消任务，界面不会继续查锁或自动重试。占用扫描共享取消信号；确认对话框会关闭。主窗口在收到关闭请求后发出取消，等 `BusyChanged(false)` 才关闭。底部固定取消条不随内容滚动；Windows 的单步调用可能有取消延迟。
 

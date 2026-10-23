@@ -10,9 +10,10 @@ public sealed partial class FileToolsView
     {
         var plan = FileActionPlan.Create(FileAction.PermanentDelete, fixture);
         SourcePath.Text = fixture;
+        if (AutoReleaseCheck.IsChecked != true) throw new Exception("Automatic lock recovery must be enabled by default.");
         await RunAsync(async () =>
         {
-            if (PermanentDeleteButton.IsEnabled || DeleteButton.IsEnabled || MoveButton.IsEnabled)
+            if (PermanentDeleteButton.IsEnabled || DeleteButton.IsEnabled || MoveButton.IsEnabled || AutoReleaseCheck.IsEnabled)
                 throw new Exception("File actions must be disabled during confirmation.");
             var (dialog, confirmation) = CreatePermanentDeleteDialog(plan);
             if (dialog.IsPrimaryButtonEnabled || dialog.DefaultButton != ContentDialogButton.Close)
@@ -49,6 +50,9 @@ public sealed partial class FileToolsView
                 !File.Exists(fixture) || ProcessList.SelectedItems.Count != 0 || TerminateButton.IsEnabled)
                 throw new Exception("Permanent-delete failure must diagnose locks, preserve intent and leave processes unselected.");
         }
+        await Task.Delay(100);
+        if (!ActivityText.Text.Contains("跳过") || !ActivityText.Text.Contains(Environment.ProcessId.ToString()))
+            throw new Exception("Automatic recovery must explain why Toolbox's own fixture handle is not terminated.");
         await render(this, "permanent-locks.png");
         // A real retry must enter the typed confirmation path again; cancel it before
         // any file operation. This also checks cancellation dismisses the modal.
