@@ -21,6 +21,8 @@
 
 文件工具每次交互创建一个取消令牌，传入 `IFileOperationProgressSink` 的操作前、操作后和进度回调，取消时返回失败 HRESULT 停止后续处理。取消不是线程强杀，也不尝试回滚已完成文件。Shell 原生取消 HRESULT 转为取消任务，界面不会继续查锁或自动重试。占用扫描共享取消信号；确认对话框会关闭。主窗口在收到关闭请求后发出取消，等 `BusyChanged(false)` 才关闭。底部固定取消条不随内容滚动；Windows 的单步调用可能有取消延迟。
 
+`FileOperationProgress` 把 Shell 的 `UpdateProgress` 工作量估算转换为百分比；工作量不是字节或文件数，未知/无效总量保持不确定状态，完成前最多显示 99%。`IShellItem.GetDisplayName(SIGDN_FILESYSPATH)` 提供正在处理的项目路径，无法取得时保留源路径。`FinishOperations` 回调和 `Post*` 成功/调度通知都不能证明完成，只有 `PerformOperations` 返回、HRESULT/取消标志及源路径检查通过后才发布 Completed/100%。恢复流程对查询占用、结束进程和重试发布独立阶段并清空比例。`LatestUiProgress` 合并密集回调，保留最新快照，避免大量小文件导致 UI 队列堆积；取消和旧操作的延迟更新仍受令牌/操作身份检查保护。计时从文件操作确认后开始，包含自动恢复时间，不伪造剩余时间。
+
 `tests/Toolbox.Platform.Tests` 只启动自建的文件占用辅助进程，验证实际占用定位、选择结束、PID 创建时间校验、移动重试和回收站操作；清理仅限自己的进程与临时目录。
 
 `ShellFileOperation` 的进度回调保留每个项目的原始 HRESULT，向用户区分共享冲突、源/目标权限和取消，而不只显示笼统的失败。

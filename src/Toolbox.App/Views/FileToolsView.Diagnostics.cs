@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Toolbox.Core;
+using Toolbox.Platform;
+using Toolbox.App.Services;
 
 namespace Toolbox.App.Views;
 
@@ -69,12 +71,41 @@ public sealed partial class FileToolsView
         await started.Task;
         if (!CancelButton.IsEnabled || CancelButton.Visibility != Visibility.Visible)
             throw new Exception("Active file operations must expose an enabled cancel button.");
-        ProgressText.Text = "正在移动，请稍候…";
+        var rendered = new List<FileOperationProgress>();
+        var buffered = new LatestUiProgress<FileOperationProgress>(DispatcherQueue, rendered.Add);
+        for (var index = 0; index < 1000; index++) buffered.Report(new(FileOperationStage.Working, index.ToString(), fixture, index % 99));
+        var latest = new FileOperationProgress(FileOperationStage.Working, "last update", fixture, 42);
+        buffered.Report(latest);
+        await Task.Delay(100);
+        if (rendered.Count != 1 || rendered[0] != latest)
+            throw new Exception("A burst of native progress must retain the latest snapshot without flooding the UI queue.");
+        RenderProgress(new(FileOperationStage.Working, "正在移动…", fixture, 42));
+        if (OperationProgressBar.IsIndeterminate || OperationProgressBar.Value != 42 || !ProgressPercent.Text.Contains("42%") || CurrentItemText.Text != fixture)
+            throw new Exception("Known progress must show its percentage and current path.");
+        await Task.Delay(250); // Let the native progress indicator's visual transition settle.
         await render(this, "file-operation-cancel.png");
+        RenderProgress(new(FileOperationStage.Working, "正在统计进度…", fixture));
+        if (!OperationProgressBar.IsIndeterminate || ProgressPercent.Text.Contains('%'))
+            throw new Exception("Unknown totals must never show a stale percentage.");
+        await Task.Delay(200);
+        await render(this, "file-progress-unknown.png");
+        foreach (var stage in new[] { FileOperationStage.InspectingLocks, FileOperationStage.ReleasingLocks, FileOperationStage.Retrying })
+        {
+            RenderProgress(new(FileOperationStage.Working, "fixture", fixture, 80));
+            RenderProgress(new(stage, "fixture", fixture));
+            if (!OperationProgressBar.IsIndeterminate || OperationProgressBar.Value != 0 || ProgressPercent.Text.Contains('%'))
+                throw new Exception("Recovery phases must discard the prior percentage.");
+        }
+        RenderProgress(new(FileOperationStage.Finalizing, "正在完成…", fixture, 100));
+        if (OperationProgressBar.Value != 99) throw new Exception("An unverified result must not display 100%.");
+        RenderProgress(new(FileOperationStage.Completed, "已完成", fixture, 100));
+        if (OperationProgressBar.Value != 100 || OperationProgressBar.IsIndeterminate) throw new Exception("Verified completion must display 100%.");
+        RenderProgress(new(FileOperationStage.Working, "正在移动…", fixture, 42));
         Cancel_Click(this, new RoutedEventArgs());
+        if (!OperationProgressBar.IsIndeterminate || ProgressPercent.Text != "取消中") throw new Exception("Cancel must clear transfer progress immediately.");
         await running;
         if (IsBusy || _pending is not null || RetryButton.IsEnabled || !PermanentDeleteButton.IsEnabled ||
-            !OperationStatus.Title.Contains("已取消") || !File.Exists(fixture))
+            !OperationStatus.Title.Contains("已取消") || !File.Exists(fixture) || _elapsedTimer.IsEnabled)
             throw new Exception("Cancellation must clear pending actions, release the UI and preserve its fixture.");
     }
 

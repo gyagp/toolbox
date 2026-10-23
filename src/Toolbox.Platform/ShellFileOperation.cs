@@ -6,12 +6,13 @@ namespace Toolbox.Platform;
 /// <summary>Use Explorer's move, recycle and explicitly confirmed permanent-delete implementation.</summary>
 public static class ShellFileOperation
 {
-    public static Task ExecuteAsync(FileActionPlan plan, nint owner = default, CancellationToken cancellation = default, IProgress<int>? progress = null)
+    public static Task ExecuteAsync(FileActionPlan plan, nint owner = default, CancellationToken cancellation = default,
+        IProgress<int>? progress = null, IProgress<FileOperationProgress>? operationProgress = null)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { cancellation.ThrowIfCancellationRequested(); Execute(plan.Revalidate(), owner, cancellation, progress); completion.TrySetResult(); }
+            try { cancellation.ThrowIfCancellationRequested(); Execute(plan.Revalidate(), owner, cancellation, progress, operationProgress); completion.TrySetResult(); }
             catch (OperationCanceledException) { completion.TrySetCanceled(cancellation.IsCancellationRequested ? cancellation : new CancellationToken(true)); }
             catch (Exception error) { completion.TrySetException(error); }
         }) { IsBackground = true, Name = "Toolbox file operation" };
@@ -20,12 +21,13 @@ public static class ShellFileOperation
         return completion.Task;
     }
 
-    private static void Execute(FileActionPlan plan, nint owner, CancellationToken cancellation, IProgress<int>? updates)
+    private static void Execute(FileActionPlan plan, nint owner, CancellationToken cancellation, IProgress<int>? updates,
+        IProgress<FileOperationProgress>? operationProgress)
     {
         IFileOperation? operation = null;
         IShellItem? source = null, destination = null;
         uint? subscription = null;
-        var progress = new OperationProgress(cancellation, updates);
+        var progress = new OperationProgress(cancellation, updates, operationProgress, plan.Action, plan.Source);
         try
         {
             operation = (IFileOperation)Activator.CreateInstance(Type.GetTypeFromCLSID(new("3AD05575-8857-4850-9277-11B85BDB8E09"), true)!)!;
@@ -48,6 +50,7 @@ public static class ShellFileOperation
             if (aborted) ThrowFailure(unchecked((int)0x80004004));
             if (File.Exists(plan.Source) || Directory.Exists(plan.Source))
                 throw new IOException("源路径仍然存在，操作尚未全部完成。请检查源与目标内容后重试。");
+            operationProgress?.Report(new(FileOperationStage.Completed, "操作已完成", plan.Source, 100));
 
             // A cancellation requested after completion does not retroactively undo success.
             void ThrowFailure(int code)
@@ -113,7 +116,15 @@ public static class ShellFileOperation
     private static extern int SHCreateItemFromParsingName(string path, nint context, ref Guid iid, out IShellItem item);
 
     [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    public interface IShellItem { }
+    public interface IShellItem
+    {
+        // Native vtable order, including the two slots before GetDisplayName.
+        void BindToHandler(nint binding, ref Guid handler, ref Guid interfaceId, out nint value);
+        void GetParent(out IShellItem parent);
+        void GetDisplayName(uint kind, out nint name);
+        void GetAttributes(uint mask, out uint attributes);
+        void Compare(IShellItem other, uint hint, out int order);
+    }
 
     [ComVisible(true), Guid("04B0F1A7-9490-44BC-96E1-4296A31252E2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IOperationProgress
@@ -137,10 +148,36 @@ public static class ShellFileOperation
     }
 
     [ComVisible(true), ClassInterface(ClassInterfaceType.None)]
-    public sealed class OperationProgress(CancellationToken cancellation = default, IProgress<int>? updates = null) : IOperationProgress
+    public sealed class OperationProgress(CancellationToken cancellation = default, IProgress<int>? updates = null,
+        IProgress<FileOperationProgress>? operationProgress = null, FileAction action = FileAction.Move, string? source = null) : IOperationProgress
     {
         internal int? FailureCode { get; private set; }
         private int _notifications;
+        private uint _total, _done;
+        private readonly string? _source = source;
+        private string? _currentItem = source;
+        private void Report(FileOperationProgress value)
+        {
+            if (operationProgress is null || cancellation.IsCancellationRequested) return;
+            operationProgress.Report(value);
+        }
+        private int BeforeItem(IShellItem? item)
+        {
+            if (cancellation.IsCancellationRequested) return ContinueOrCancel();
+            nint name = 0;
+            try
+            {
+                if (operationProgress is not null && item is not null)
+                {
+                    item.GetDisplayName(0x80058000, out name); // SIGDN_FILESYSPATH
+                    _currentItem = Marshal.PtrToStringUni(name) ?? _source;
+                }
+            }
+            catch (COMException) { _currentItem = _source; }
+            finally { if (name != 0) Marshal.FreeCoTaskMem(name); }
+            Report(FileOperationProgress.FromShell(action, _currentItem, _total, _done));
+            return ContinueOrCancel();
+        }
         private int ContinueOrCancel() => cancellation.IsCancellationRequested ? unchecked((int)0x80004004) : 0;
         private int Record(int result) { if (result < 0) FailureCode ??= result; return 0; }
         private int Completed(int result)
@@ -151,19 +188,33 @@ public static class ShellFileOperation
             if (result >= 0) updates?.Report(++_notifications);
             return ContinueOrCancel();
         }
-        public int StartOperations() => ContinueOrCancel();
-        public int FinishOperations(int result) => Record(result);
-        public int PreRenameItem(uint flags, IShellItem? item, string? name) => ContinueOrCancel();
+        public int StartOperations()
+        {
+            _total = _done = 0;
+            Report(new(FileOperationStage.Preparing, "正在准备文件操作…", _source));
+            return ContinueOrCancel();
+        }
+        public int FinishOperations(int result)
+        {
+            if (result >= 0) Report(new(FileOperationStage.Finalizing, "正在核对操作结果…", _currentItem));
+            return Record(result);
+        }
+        public int PreRenameItem(uint flags, IShellItem? item, string? name) => BeforeItem(item);
         public int PostRenameItem(uint flags, IShellItem? item, string? name, int result, IShellItem? created) => Completed(result);
-        public int PreMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => ContinueOrCancel();
+        public int PreMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => BeforeItem(item);
         public int PostMoveItem(uint flags, IShellItem? item, IShellItem? destination, string? name, int result, IShellItem? created) => Completed(result);
-        public int PreCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => ContinueOrCancel();
+        public int PreCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name) => BeforeItem(item);
         public int PostCopyItem(uint flags, IShellItem? item, IShellItem? destination, string? name, int result, IShellItem? created) => Completed(result);
-        public int PreDeleteItem(uint flags, IShellItem? item) => ContinueOrCancel();
+        public int PreDeleteItem(uint flags, IShellItem? item) => BeforeItem(item);
         public int PostDeleteItem(uint flags, IShellItem? item, int result, IShellItem? created) => Completed(result);
-        public int PreNewItem(uint flags, IShellItem? destination, string? name) => ContinueOrCancel();
+        public int PreNewItem(uint flags, IShellItem? destination, string? name) => BeforeItem(destination);
         public int PostNewItem(uint flags, IShellItem? destination, string? name, string? template, uint attributes, int result, IShellItem? created) => Completed(result);
-        public int UpdateProgress(uint total, uint completed) => ContinueOrCancel();
+        public int UpdateProgress(uint total, uint completed)
+        {
+            _total = total; _done = completed;
+            Report(FileOperationProgress.FromShell(action, _currentItem, total, completed));
+            return ContinueOrCancel();
+        }
         public int ResetTimer() => 0;
         public int PauseTimer() => 0;
         public int ResumeTimer() => 0;

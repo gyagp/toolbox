@@ -126,6 +126,7 @@ try
     await PermanentDeleteTests.RunAsync(Check);
     await FileOperationCancellationTests.RunAsync(Check);
     await AutomaticRecoveryTests.RunAsync(Check, root, HoldAsync);
+    await FileOperationProgressTests.RunAsync(Check, root);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally

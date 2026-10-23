@@ -74,8 +74,17 @@
     <Grid x:Name="ProgressPanel" Grid.Row="1" ColumnSpacing="12" Padding="24,12" Background="#EDF5EF" Visibility="Collapsed">
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <ProgressRing x:Name="BusyRing" Width="20" Height="20" IsActive="False" />
-      <TextBlock x:Name="ProgressText" Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap" Text="正在处理…" />
-      <Button x:Name="CancelButton" Grid.Column="2" Content="取消操作" Click="Cancel_Click" />
+      <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Center">
+        <Grid ColumnSpacing="10">
+          <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock x:Name="ProgressText" TextWrapping="Wrap" Text="正在处理…" FontSize="13" />
+          <TextBlock x:Name="ProgressPercent" Grid.Column="1" Text="统计中" FontSize="12" Foreground="#526E5E" VerticalAlignment="Center" />
+        </Grid>
+        <TextBlock x:Name="CurrentItemText" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="#63796B" IsTextSelectionEnabled="True" Visibility="Collapsed" />
+        <ProgressBar x:Name="OperationProgressBar" Minimum="0" Maximum="100" Height="5" Foreground="#347D60" Background="#CEDFD5" IsIndeterminate="True" />
+        <TextBlock x:Name="ElapsedText" Text="已用时 00:00:00" FontSize="11" Foreground="#78867F" />
+      </StackPanel>
+      <Button x:Name="CancelButton" Grid.Column="2" Content="取消操作" Click="Cancel_Click" VerticalAlignment="Center" />
     </Grid>
   </Grid>
 </UserControl>

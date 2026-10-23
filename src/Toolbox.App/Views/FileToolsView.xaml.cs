@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml.Controls;
 using Toolbox.Core;
 using Toolbox.Platform;
 using Windows.Storage.Pickers;
+using System.Diagnostics;
+using Toolbox.App.Services;
 
 namespace Toolbox.App.Views;
 
@@ -15,10 +17,17 @@ public sealed partial class FileToolsView : UserControl
     private CancellationTokenSource? _action;
     private ContentDialog? _dialog;
     private int _activityVersion;
+    private readonly Stopwatch _elapsed = new();
+    private readonly DispatcherTimer _elapsedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     internal bool IsBusy { get; private set; }
     internal event Action<bool>? BusyChanged;
 
-    public FileToolsView() { InitializeComponent(); _ready = true; }
+    public FileToolsView()
+    {
+        InitializeComponent(); _ready = true;
+        _elapsedTimer.Tick += (_, _) => UpdateElapsed();
+        Unloaded += (_, _) => _elapsedTimer.Stop();
+    }
     internal void Initialize(nint owner) => _owner = owner;
 
     private void SetBusy(bool busy)
@@ -31,8 +40,48 @@ public sealed partial class FileToolsView : UserControl
         CancelButton.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         CancelButton.IsEnabled = busy;
         CancelButton.Content = "取消操作";
+        if (busy)
+        {
+            _elapsed.Restart();
+            UpdateElapsed();
+            _elapsedTimer.Start();
+            RenderProgress(new(FileOperationStage.Preparing, "正在准备…"));
+        }
+        else
+        {
+            _elapsed.Stop();
+            _elapsedTimer.Stop();
+            OperationProgressBar.IsIndeterminate = false;
+        }
         UpdateActions();
         BusyChanged?.Invoke(busy);
+    }
+
+    private void UpdateElapsed() => ElapsedText.Text = $"已用时 {(int)_elapsed.Elapsed.TotalHours:00}:{_elapsed.Elapsed.Minutes:00}:{_elapsed.Elapsed.Seconds:00}";
+
+    private void RenderProgress(FileOperationProgress progress)
+    {
+        ProgressText.Text = progress.Message;
+        CurrentItemText.Text = progress.CurrentItem ?? "";
+        CurrentItemText.Visibility = string.IsNullOrEmpty(progress.CurrentItem) ? Visibility.Collapsed : Visibility.Visible;
+        ToolTipService.SetToolTip(CurrentItemText, progress.CurrentItem);
+        double? percentage = null;
+        if (progress.Stage == FileOperationStage.Completed) percentage = 100;
+        else if (progress.Stage is FileOperationStage.Working or FileOperationStage.Finalizing &&
+            progress.Percentage is { } value && double.IsFinite(value) && value >= 0 && value <= 100)
+            percentage = Math.Min(99, value);
+        OperationProgressBar.IsIndeterminate = percentage is null;
+        OperationProgressBar.Value = percentage ?? 0;
+        ProgressPercent.Text = percentage is { } percent ? (progress.Stage == FileOperationStage.Completed ? "100%" : $"约 {percent:0}%") :
+            progress.Stage switch
+            {
+                FileOperationStage.InspectingLocks => "查询中",
+                FileOperationStage.ReleasingLocks => "处理中",
+                FileOperationStage.Retrying => "重试中",
+                FileOperationStage.Canceling => "取消中",
+                FileOperationStage.Finalizing => "核对中",
+                _ => "统计中"
+            };
     }
 
     private void UpdateActions()
@@ -80,7 +129,7 @@ public sealed partial class FileToolsView : UserControl
         _scan?.Cancel();
         _dialog?.Hide();
         CancelButton.IsEnabled = false;
-        ProgressText.Text = "正在请求取消，等待 Windows 停止当前步骤…";
+        RenderProgress(new(FileOperationStage.Canceling, "正在请求取消，等待 Windows 停止当前步骤…", CurrentItemText.Text));
     }
 
     private async Task<bool> ShowConfirmationAsync(ContentDialog dialog)
@@ -132,12 +181,9 @@ public sealed partial class FileToolsView : UserControl
         // All initial/retry paths require fresh confirmation. The process-termination
         // path confirms BEFORE terminating anything and passes that one-use decision.
         if (plan.Action == FileAction.PermanentDelete && !permanentDeleteConfirmed && !await ConfirmPermanentDeleteAsync(plan)) return;
-        ProgressText.Text = plan.Action switch
-        {
-            FileAction.Move => "正在移动，请稍候…",
-            FileAction.Recycle => "正在移入回收站，请稍候…",
-            _ => "正在彻底删除，请稍候…"
-        };
+        _elapsed.Restart(); // Exclude time spent reading the confirmation dialog.
+        UpdateElapsed();
+        RenderProgress(new(FileOperationStage.Preparing, FileOperationProgress.ActionLabel(plan.Action) + " · 正在准备…", plan.Source));
         _pending = plan;
         ProcessList.ItemsSource = null;
         ScanWarnings.Visibility = Visibility.Collapsed;
@@ -153,9 +199,9 @@ public sealed partial class FileToolsView : UserControl
                 ActivityPanel.Visibility = Visibility.Visible;
                 ActivityText.Text += $"{DateTime.Now:HH:mm:ss}  {message}\n";
             });
-            var progress = new Progress<string>(message =>
+            var progress = new LatestUiProgress<FileOperationProgress>(DispatcherQueue, update =>
             {
-                if (_action == action && !token.IsCancellationRequested) ProgressText.Text = message;
+                if (IsBusy && _action == action && !token.IsCancellationRequested) RenderProgress(update);
             });
             var result = await FileOperationRecovery.ExecuteAsync(plan, AutoReleaseCheck.IsChecked == true, _owner, token, activity, progress);
             if (!result.Succeeded)
@@ -195,14 +241,15 @@ public sealed partial class FileToolsView : UserControl
         ProcessList.ItemsSource = null;
         LockSummary.Text = "正在查询…";
         ScanWarnings.Visibility = Visibility.Collapsed;
-        ProgressText.Text = "正在查找占用…";
+        RenderProgress(new(FileOperationStage.InspectingLocks, "正在查找占用…", path));
         using var scan = CancellationTokenSource.CreateLinkedTokenSource(_action?.Token ?? CancellationToken.None);
         _scan = scan;
         CancelButton.Visibility = Visibility.Visible;
         CancelButton.Content = "取消查询";
         try
         {
-            var progress = new Progress<int>(count => { if (_scan == scan && !scan.IsCancellationRequested) ProgressText.Text = $"已检查 {count} 个文件…"; });
+            var progress = new Progress<int>(count => { if (_scan == scan && !scan.IsCancellationRequested)
+                RenderProgress(new(FileOperationStage.InspectingLocks, $"已检查 {count} 个文件…", path)); });
             var report = await Task.Run(() => LockInspector.Inspect(path, scan.Token, progress));
             ShowLocks(report);
         }
@@ -261,7 +308,7 @@ public sealed partial class FileToolsView : UserControl
             if (!await ConfirmPermanentDeleteAsync(permanent)) return;
             permanentDeleteConfirmed = true;
         }
-        ProgressText.Text = "正在结束选中的进程…";
+        RenderProgress(new(FileOperationStage.ReleasingLocks, "正在结束选中的进程…", _pending?.Source));
         var failures = new List<string>();
         foreach (var process in selected)
         {

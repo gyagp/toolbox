@@ -13,24 +13,25 @@ public static class FileOperationRecovery
     public const int MaximumRetries = 2;
 
     public static Task<FileRecoveryResult> ExecuteAsync(FileActionPlan plan, bool automatic, nint owner = default,
-        CancellationToken cancellation = default, IProgress<string>? activity = null, IProgress<string>? progress = null) =>
+        CancellationToken cancellation = default, IProgress<string>? activity = null, IProgress<FileOperationProgress>? progress = null) =>
         ExecuteCoreAsync(plan, automatic, cancellation,
-            token => ShellFileOperation.ExecuteAsync(plan, owner, token),
+            token => ShellFileOperation.ExecuteAsync(plan, owner, token, operationProgress: progress),
             token => Task.Run(() => LockInspector.Inspect(plan.Source, token,
-                new ScanProgress(count => progress?.Report($"正在查找占用，已检查 {count:N0} 个文件…"))), token),
+                new ScanProgress(count => progress?.Report(new(FileOperationStage.InspectingLocks, $"正在查找占用，已检查 {count:N0} 个文件…", plan.Source)))), token),
             (process, token) => Task.Run(() => LockInspector.TerminateIfStillUsingAsync(process, plan.Source, token), token),
             activity, progress);
 
     internal static async Task<FileRecoveryResult> ExecuteCoreAsync(FileActionPlan plan, bool automatic, CancellationToken cancellation,
         Func<CancellationToken, Task> execute, Func<CancellationToken, Task<LockReport>> inspect,
         Func<LockingProcess, CancellationToken, Task<bool>> release,
-        IProgress<string>? activity = null, IProgress<string>? progress = null)
+        IProgress<string>? activity = null, IProgress<FileOperationProgress>? progress = null)
     {
         var attempted = new HashSet<(int, long)>();
         for (var retry = 0; ; retry++)
         {
             cancellation.ThrowIfCancellationRequested();
-            progress?.Report(retry == 0 ? "正在执行文件操作…" : $"正在自动重试 {retry}/{MaximumRetries}…");
+            progress?.Report(new(retry == 0 ? FileOperationStage.Preparing : FileOperationStage.Retrying,
+                retry == 0 ? FileOperationProgress.ActionLabel(plan.Action) + " · 正在准备…" : $"正在自动重试 {retry}/{MaximumRetries}…", plan.Source));
             Exception failure;
             try
             {
@@ -42,7 +43,7 @@ public static class FileOperationRecovery
             catch (Exception error) { failure = error; }
             cancellation.ThrowIfCancellationRequested();
             activity?.Report($"操作未完成：{failure.Message}");
-            progress?.Report("正在查找占用…");
+            progress?.Report(new(FileOperationStage.InspectingLocks, "正在查找占用…", plan.Source));
             LockReport report;
             try { report = await inspect(cancellation); }
             catch (OperationCanceledException) { throw; }
@@ -81,7 +82,7 @@ public static class FileOperationRecovery
                     return new(failure, report, retry);
                 }
                 hadCandidate = true;
-                progress?.Report("正在核对并处理占用：" + process.Label);
+                progress?.Report(new(FileOperationStage.ReleasingLocks, "正在核对并处理占用：" + process.Label, plan.Source));
                 try
                 {
                     var terminated = await release(process, cancellation);
