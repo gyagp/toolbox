@@ -1,6 +1,6 @@
 param(
     [ValidatePattern('^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')]
-    [string]$Version = '0.2.0',
+    [string]$Version = '0.2.1',
     [string]$Dotnet = 'dotnet',
     [string]$NuGetConfig = ''
 )
@@ -17,7 +17,7 @@ $arguments = @('publish', "$root/src/Toolbox.App/Toolbox.App.csproj", '-c', 'Rel
 if ($NuGetConfig) { $arguments += "-p:RestoreConfigFile=$NuGetConfig" }
 & $Dotnet @arguments
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
-foreach ($required in @('Toolbox.exe', 'Toolbox.pri', 'App.xbf', 'MainWindow.xbf', 'Views/LibraryView.xbf', 'Views/ToolHomeView.xbf', 'Views/FileToolsView.xbf', 'Views/ImageViewerView.xbf', 'Views/DiskCleanupView.xbf', 'Views/PdfToolsView.xbf', 'Toolbox.Platform.dll', 'PdfSharp.dll', 'ScreenRecorderLib.dll', 'Assets/Toolbox.ico')) {
+foreach ($required in @('Toolbox.exe', 'Toolbox.pri', 'App.xbf', 'MainWindow.xbf', 'Views/LibraryView.xbf', 'Views/FileToolsView.xbf', 'Views/ImageViewerView.xbf', 'Views/DiskCleanupView.xbf', 'Views/PdfToolsView.xbf', 'Toolbox.Platform.dll', 'PdfSharp.dll', 'ScreenRecorderLib.dll', 'Assets/Toolbox.ico')) {
     if (!(Test-Path -LiteralPath (Join-Path $publish $required))) { throw "Publish output is missing $required" }
 }
 

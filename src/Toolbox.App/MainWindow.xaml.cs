@@ -27,10 +27,11 @@ public sealed partial class MainWindow : Window
     private bool _closeAfterFileOperation;
     private readonly CaptureLibrary _library;
     private readonly Dictionary<ToolId, ToggleButton> _navigation = [];
+    private readonly Dictionary<ToolId, ToggleButton> _captureTabs = [];
     private AppWindowPresenter? _windowedPresenter;
     private Windows.Graphics.RectInt32 _windowedBounds;
     private bool _wasMaximized;
-    private ToolId _selectedTool = ToolId.Overview;
+    private ToolId _selectedTool = ToolId.Screenshot;
     private bool _reviewingPdfClose, _allowPdfClose;
     private readonly Stopwatch _elapsed = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -61,7 +62,7 @@ public sealed partial class MainWindow : Window
             if (!busy && _closeAfterFileOperation) DispatcherQueue.TryEnqueue(Close);
         };
         BuildNavigation();
-        HomePage.ToolSelected += async id => await NavigateAsync(id);
+        UpdateCaptureNavigation(ToolId.Screenshot);
         _windowProc = WindowProc;
         NativeMethods.SetWindowSubclass(_handle, _windowProc, 1, 0);
         var failed = new List<string>();
@@ -329,44 +330,41 @@ public sealed partial class MainWindow : Window
             var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             content.Children.Add(new FontIcon { Glyph = glyph, FontSize = 17 });
             content.Children.Add(new TextBlock { Text = name, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
-            var button = new ToggleButton { Content = content, Style = (Style)Application.Current.Resources["SidebarButtonStyle"], IsChecked = id == ToolId.Overview };
-            if (id == ToolId.CaptureMenu)
-            {
-                content.Children.Add(new FontIcon { Glyph = "\uE70D", FontSize = 9 });
-                var menu = new MenuFlyout();
-                foreach (var child in ToolCatalog.All.Where(tool => tool.Parent == id))
-                {
-                    var item = new MenuFlyoutItem { Text = child.Title, Icon = new FontIcon { Glyph = child.Glyph } };
-                    item.Click += async (_, _) => { if (_mode == CaptureMode.Idle) await NavigateAsync(child.Id); };
-                    menu.Items.Add(item);
-                }
-                FlyoutBase.SetAttachedFlyout(button, menu);
-                button.Click += (_, _) =>
-                {
-                    button.IsChecked = ToolCatalog.NavigationId(_selectedTool) == id;
-                    FlyoutBase.ShowAttachedFlyout(button);
-                };
-            }
-            else button.Click += async (_, _) => await NavigateAsync(id);
+            var button = new ToggleButton { Content = content, Style = (Style)Application.Current.Resources["SidebarButtonStyle"],
+                IsChecked = id == ToolCatalog.NavigationId(_selectedTool) };
+            button.Click += async (_, _) => await NavigateAsync(id);
             _navigation.Add(id, button); ToolNavigation.Children.Add(button);
         }
-        Add(ToolId.Overview, "工具总览", "\uE80F");
         foreach (var category in ToolCatalog.TopLevel.GroupBy(tool => tool.Category))
         {
             ToolNavigation.Children.Add(new TextBlock { Text = category.Key, FontSize = 11, Margin = new(16, 12, 0, 6),
                 Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 132, 158, 145)) });
             foreach (var tool in category) Add(tool.Id, tool.Title, tool.Glyph);
         }
+        foreach (var (id, label) in new[] { (ToolId.Screenshot, "截图"), (ToolId.ScrollCapture, "长截图"),
+            (ToolId.Recording, "录屏"), (ToolId.Library, "内容库") })
+        {
+            var tab = new ToggleButton { Content = label, HorizontalAlignment = HorizontalAlignment.Stretch,
+                CornerRadius = new(8), Padding = new(10, 8, 10, 8), FontSize = 13 };
+            tab.Click += async (_, _) => { if (_mode == CaptureMode.Idle) await NavigateAsync(id); };
+            Grid.SetColumn(tab, _captureTabs.Count); CaptureTabs.Children.Add(tab); _captureTabs.Add(id, tab);
+        }
     }
 
     private void UpdateNavigationAvailability()
     {
-        foreach (var button in _navigation.Values) button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy;
+        foreach (var button in _navigation.Values.Concat(_captureTabs.Values))
+            button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy;
     }
 
     private async Task NavigateAsync(ToolId id, string? path = null)
     {
-        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy) return;
+        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy)
+        {
+            foreach (var (key, button) in _navigation) button.IsChecked = key == ToolCatalog.NavigationId(_selectedTool);
+            foreach (var (key, tab) in _captureTabs) tab.IsChecked = key == _selectedTool;
+            return;
+        }
         if (id == ToolId.CaptureMenu) id = ToolId.Screenshot;
         _selectedTool = id;
         if (id != ToolId.ImageViewer && ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
@@ -379,12 +377,21 @@ public sealed partial class MainWindow : Window
         foreach (var (key, button) in _navigation) button.IsChecked = key == navigationId;
         ToolNavigation.UpdateLayout();
         _navigation[navigationId].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
-        HomePage.Visibility = id == ToolId.Overview ? Visibility.Visible : Visibility.Collapsed;
         LibraryPage.Visibility = id == ToolId.Library ? Visibility.Visible : Visibility.Collapsed;
         FileToolsPage.Visibility = id == ToolId.FileManager ? Visibility.Visible : Visibility.Collapsed;
         DiskCleanupPage.Visibility = id == ToolId.DiskCleanup ? Visibility.Visible : Visibility.Collapsed;
         ImageViewerPage.Visibility = id == ToolId.ImageViewer ? Visibility.Visible : Visibility.Collapsed;
         PdfToolsPage.Visibility = id == ToolId.Pdf ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCaptureNavigation(id);
+        if (id == ToolId.Library) await LibraryPage.ActivateAsync(path);
+        if (id == ToolId.ImageViewer) await ImageViewerPage.ActivateAsync();
+        if (id == ToolId.DiskCleanup) DiskCleanupPage.Activate();
+    }
+
+    private void UpdateCaptureNavigation(ToolId id)
+    {
+        foreach (var (key, tab) in _captureTabs) tab.IsChecked = key == id;
+        CaptureTabs.Visibility = ToolCatalog.NavigationId(id) == ToolId.CaptureMenu ? Visibility.Visible : Visibility.Collapsed;
         var capture = id is ToolId.Screenshot or ToolId.ScrollCapture or ToolId.Recording;
         CapturePage.Visibility = capture ? Visibility.Visible : Visibility.Collapsed;
         if (capture)
@@ -397,9 +404,6 @@ public sealed partial class MainWindow : Window
             CaptureSettings.Visibility = id == ToolId.Screenshot ? Visibility.Collapsed : Visibility.Visible;
             AudioSettings.Visibility = id == ToolId.Recording ? Visibility.Visible : Visibility.Collapsed;
         }
-        if (id == ToolId.Library) await LibraryPage.ActivateAsync(path);
-        if (id == ToolId.ImageViewer) await ImageViewerPage.ActivateAsync();
-        if (id == ToolId.DiskCleanup) DiskCleanupPage.Activate();
     }
 
     internal async Task OpenImageArgumentsAsync(IEnumerable<string> arguments)

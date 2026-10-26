@@ -23,7 +23,7 @@
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock Text="工具箱" FontSize="22" FontWeight="SemiBold" Foreground="#F1F7F4" />
-            <TextBlock Text="TOOLBOX  /  0.2.0" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
+            <TextBlock Text="TOOLBOX  /  0.2.1" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
           </StackPanel>
         </StackPanel>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Visible">
@@ -42,10 +42,12 @@
       </Grid>
     </Border>
     <Grid Grid.Column="1">
-      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
       <InfoBar x:Name="StatusBar" Margin="28,12,28,0" IsOpen="False" IsClosable="True" Severity="Informational" />
-      <views:ToolHomeView x:Name="HomePage" Grid.Row="1" />
-      <ScrollViewer x:Name="CapturePage" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" Visibility="Collapsed">
+      <Grid x:Name="CaptureTabs" Grid.Row="1" Margin="28,18,28,0" ColumnSpacing="6">
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+      </Grid>
+      <ScrollViewer x:Name="CapturePage" Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Padding="28,28,28,24" Spacing="22" MaxWidth="1160" HorizontalAlignment="Stretch">
           <StackPanel Spacing="6">
             <TextBlock x:Name="CaptureTitle" Text="屏幕截图" FontSize="28" FontWeight="SemiBold" Foreground="#1E3027" />
@@ -113,11 +115,11 @@
           </StackPanel>
         </StackPanel>
       </ScrollViewer>
-      <views:LibraryView x:Name="LibraryPage" Grid.Row="1" Visibility="Collapsed" />
-      <views:FileToolsView x:Name="FileToolsPage" Grid.Row="1" Visibility="Collapsed" />
-      <views:DiskCleanupView x:Name="DiskCleanupPage" Grid.Row="1" Visibility="Collapsed" />
-      <views:ImageViewerView x:Name="ImageViewerPage" Grid.Row="1" Visibility="Collapsed" />
-      <views:PdfToolsView x:Name="PdfToolsPage" Grid.Row="1" Visibility="Collapsed" />
+      <views:LibraryView x:Name="LibraryPage" Grid.Row="2" Visibility="Collapsed" />
+      <views:FileToolsView x:Name="FileToolsPage" Grid.Row="2" Visibility="Collapsed" />
+      <views:DiskCleanupView x:Name="DiskCleanupPage" Grid.Row="2" Visibility="Collapsed" />
+      <views:ImageViewerView x:Name="ImageViewerPage" Grid.Row="2" Visibility="Collapsed" />
+      <views:PdfToolsView x:Name="PdfToolsPage" Grid.Row="2" Visibility="Collapsed" />
     </Grid>
   </Grid>
 </Window>

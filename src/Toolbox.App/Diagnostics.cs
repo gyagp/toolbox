@@ -37,11 +37,11 @@ public sealed partial class MainWindow
             await Task.Delay(200);
             await RenderUiAsync(output, "file-locks.png");
         }
-        await NavigateAsync(Tools.ToolId.Overview);
+        await NavigateAsync(Tools.ToolId.Screenshot);
         var originalSize = AppWindow.Size;
         AppWindow.Resize(new(980, 760));
         await Task.Delay(250);
-        await RenderUiAsync(output, "overview-narrow.png");
+        await RenderUiAsync(output, "capture-narrow.png");
         AppWindow.Resize(originalSize);
         await Task.Delay(250);
         var file = await StorageFile.GetFileFromPathAsync(Path.Combine(output, "ui.png"));

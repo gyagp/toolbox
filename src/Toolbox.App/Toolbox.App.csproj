@@ -32,6 +32,8 @@
   <Target Name="IncludeWinUIResourcesInPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
       <_ToolboxXbf Include="$(OutDir)**/*.xbf" />
+      <!-- Do not republish stale XBF files left by a removed page in an incremental build. -->
+      <_ToolboxXbf Remove="@(_ToolboxXbf)" Condition="!Exists('$(MSBuildProjectDirectory)/%(_ToolboxXbf.RecursiveDir)%(_ToolboxXbf.Filename).xaml')" />
       <ResolvedFileToPublish Include="$(OutDir)$(AssemblyName).pri">
         <RelativePath>$(AssemblyName).pri</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

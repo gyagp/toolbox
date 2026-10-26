@@ -1,14 +1,14 @@
 namespace Toolbox.App.Tools;
 
-internal enum ToolId { Overview, Screenshot, ScrollCapture, Recording, Library, FileManager, ImageViewer, DiskCleanup, CaptureMenu, Pdf }
+internal enum ToolId { Screenshot, ScrollCapture, Recording, Library, FileManager, ImageViewer, DiskCleanup, CaptureMenu, Pdf }
 internal sealed record ToolDefinition(ToolId Id, string Title, string Description, string Glyph, string Category, ToolId? Parent = null);
 
 internal static class ToolCatalog
 {
-    // Shared by the overview and sidebar; add new tools here, then map their view in MainWindow.
+    // Shared by the sidebar and capture tabs; map each tool's view in MainWindow.
     internal static readonly ToolDefinition[] All =
     [
-        new(ToolId.CaptureMenu, "屏幕捕获", "截图、长截图、录屏与捕获内容库，集中在一个菜单。", "\uE722", "屏幕与媒体"),
+        new(ToolId.CaptureMenu, "屏幕捕获", "截图、长截图、录屏与捕获内容库，通过页面顶部切换。", "\uE722", "屏幕与媒体"),
         new(ToolId.Screenshot, "屏幕截图", "矩形、窗口、全屏与任意形状，保存或复制图片。", "\uE722", "屏幕与媒体", ToolId.CaptureMenu),
         new(ToolId.ScrollCapture, "长截图", "自动向下滚动并拼接长页面。实验功能。", "\uE8A5", "屏幕与媒体", ToolId.CaptureMenu),
         new(ToolId.Recording, "屏幕录制", "录制显示器，支持系统声音、麦克风与暂停。", "\uE714", "屏幕与媒体", ToolId.CaptureMenu),

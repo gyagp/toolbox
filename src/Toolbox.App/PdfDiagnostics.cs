@@ -11,12 +11,17 @@ public sealed partial class MainWindow
     {
         await Task.Delay(400);
         if (_navigation.ContainsKey(ToolId.Screenshot) || _navigation.ContainsKey(ToolId.Library) || !_navigation.ContainsKey(ToolId.CaptureMenu))
-            throw new Exception("Capture tools must share one navigation menu.");
-        await RenderUiAsync(output, "overview.png");
+            throw new Exception("Capture tools must share one direct navigation entry.");
+        if (_selectedTool != ToolId.Screenshot || CapturePage.Visibility != Microsoft.UI.Xaml.Visibility.Visible || _captureTabs[ToolId.Screenshot].IsChecked != true)
+            throw new Exception("Startup must open screenshot capture directly.");
+        if (Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase.GetAttachedFlyout(_navigation[ToolId.CaptureMenu]) is not null)
+            throw new Exception("Capture navigation must not have a dropdown.");
+        await RenderUiAsync(output, "capture-startup.png");
         foreach (var id in new[] { ToolId.Screenshot, ToolId.ScrollCapture, ToolId.Recording, ToolId.Library })
         {
             await NavigateAsync(id);
-            if (_navigation[ToolId.CaptureMenu].IsChecked != true) throw new Exception("Capture child navigation lost parent selection.");
+            if (_navigation[ToolId.CaptureMenu].IsChecked != true || _captureTabs[id].IsChecked != true || CaptureTabs.Visibility != Microsoft.UI.Xaml.Visibility.Visible)
+                throw new Exception("Capture tab navigation lost its selection.");
         }
         await NavigateAsync(ToolId.Pdf); await RenderUiAsync(output, "pdf-empty.png");
         var source = Path.Combine(output, "original-fixture.pdf");

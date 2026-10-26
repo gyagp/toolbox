@@ -7,7 +7,7 @@ public sealed partial class MainWindow
     internal async Task RunCleanupTestAsync(string output)
     {
         await Task.Delay(500);
-        await RenderUiAsync(output, "overview.png");
+        await RenderUiAsync(output, "capture-startup.png");
         await NavigateAsync(Tools.ToolId.DiskCleanup);
         await Task.Delay(250);
         await RenderUiAsync(output, "cleanup-empty.png");
