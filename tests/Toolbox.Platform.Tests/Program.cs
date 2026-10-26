@@ -39,6 +39,19 @@ void Check(bool condition, string message)
     Console.WriteLine("PASS: " + message);
 }
 
+if (args.SequenceEqual(new[] { "--pdf-tests" }))
+{
+    var pdfSandbox = Path.Combine(Path.GetTempPath(), "Toolbox-pdf-tests-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(pdfSandbox);
+    try { PdfWorkspaceTests.Run(Check, pdfSandbox); Console.WriteLine($"PASS: {count} PDF assertions."); }
+    finally
+    {
+        if (Path.GetDirectoryName(pdfSandbox) != Path.TrimEndingDirectorySeparator(Path.GetTempPath())) throw new Exception("Unexpected PDF fixture path");
+        Directory.Delete(pdfSandbox, recursive: true);
+    }
+    return;
+}
+
 var root = Path.Combine(Path.GetTempPath(), "Toolbox-file-tests-" + Guid.NewGuid().ToString("N"));
 var source = Path.Combine(root, "source");
 var target = Path.Combine(root, "destination");
@@ -127,6 +140,7 @@ try
     await FileOperationCancellationTests.RunAsync(Check);
     await AutomaticRecoveryTests.RunAsync(Check, root, HoldAsync);
     await FileOperationProgressTests.RunAsync(Check, root);
+    PdfWorkspaceTests.Run(Check, root);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally

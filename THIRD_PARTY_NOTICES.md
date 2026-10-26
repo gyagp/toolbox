@@ -10,6 +10,13 @@ notice is preserved in LICENSE. See docs/migration.md for the migration scope.
 - **ScreenRecorderLib 7.0.1** — Copyright (c) 2017 Sverre Skodje, MIT.
   Source: https://github.com/sskodje/ScreenRecorderLib . Full license in
   `licenses/ScreenRecorderLib.txt`.
+- **PDFsharp 6.2.4 (Core build)** — Copyright (c) 2001-2026 empira Software GmbH, MIT.
+  Source: https://github.com/empira/PDFsharp/tree/v6.2.4 . Full license in `licenses/PDFsharp.txt`.
+- **Toolbox Sans SC Regular** — a renamed static weight-400 instance of Noto Sans SC,
+  derived from Google Fonts' NotoSansSC[wght].ttf. Copyright 2014-2021 Adobe;
+  SIL Open Font License 1.1, reserved font name 'Source'. License in `licenses/NotoSansSC-OFL.txt`.
+  Source: https://github.com/google/fonts/tree/main/ofl/notosanssc . Rebuild instructions
+  and exact input SHA-256 are in `scripts/prepare-pdf-font.py`. The font remains OFL licensed.
 - **Windows App SDK / WinUI 3** — Microsoft and contributors.
   Source: https://github.com/microsoft/WindowsAppSDK and
   https://github.com/microsoft/microsoft-ui-xaml . Source portions are MIT;

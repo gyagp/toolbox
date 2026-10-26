@@ -30,6 +30,8 @@ public sealed partial class MainWindow : Window
     private AppWindowPresenter? _windowedPresenter;
     private Windows.Graphics.RectInt32 _windowedBounds;
     private bool _wasMaximized;
+    private ToolId _selectedTool = ToolId.Overview;
+    private bool _reviewingPdfClose, _allowPdfClose;
     private readonly Stopwatch _elapsed = new();
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -44,10 +46,16 @@ public sealed partial class MainWindow : Window
         _handle = WinRT.Interop.WindowNative.GetWindowHandle(this);
         FileToolsPage.Initialize(_handle);
         ImageViewerPage.Initialize(_handle);
+        PdfToolsPage.Initialize(_handle);
         ImageViewerPage.FullScreenRequested += full => SafeAction(() => SetViewerFullScreen(full));
         ImageViewerPage.ImageOpened += path => Title = $"{Path.GetFileName(path)} · Toolbox";
         RootGrid.SizeChanged += (_, e) => ShortcutHints.Visibility = e.NewSize.Height < 740 ? Visibility.Collapsed : Visibility.Visible;
         FileToolsPage.BusyChanged += busy =>
+        {
+            UpdateNavigationAvailability();
+            if (!busy && _closeAfterFileOperation) DispatcherQueue.TryEnqueue(Close);
+        };
+        PdfToolsPage.BusyChanged += busy =>
         {
             UpdateNavigationAvailability();
             if (!busy && _closeAfterFileOperation) DispatcherQueue.TryEnqueue(Close);
@@ -71,30 +79,52 @@ public sealed partial class MainWindow : Window
             StatusBar.Title = text;
             _sessionWindow?.SetStatus(text + "\n录制所选显示器 · MP4");
         };
-        AppWindow.Closing += (_, e) =>
+        AppWindow.Closing += (sender, e) =>
         {
-            if (FileToolsPage.IsBusy)
+            if (FileToolsPage.IsBusy || PdfToolsPage.IsBusy)
             {
                 e.Cancel = true;
                 _closeAfterFileOperation = true;
                 FileToolsPage.RequestCancel();
+                PdfToolsPage.Cancel();
                 Status("正在取消后关闭", "等待 Windows 停止当前步骤后自动关闭。已经完成的移动或删除不会回滚。");
                 return;
             }
-            if (_mode == CaptureMode.Idle) return;
-            e.Cancel = true;
-            _closeWhenDone = true;
-            StopActive();
+            if (_mode != CaptureMode.Idle)
+            {
+                e.Cancel = true;
+                _closeWhenDone = true;
+                StopActive();
+                return;
+            }
+            if (PdfToolsPage.IsDirty && !_allowPdfClose)
+            {
+                e.Cancel = true;
+                if (!_reviewingPdfClose) _ = ReviewPdfCloseAsync();
+            }
         };
         Closed += (_, _) =>
         {
             DiskCleanupPage.Deactivate();
+            PdfToolsPage.Cancel();
             LibraryPage.Dispose();
             ImageViewerPage.Deactivate();
             _timer.Stop();
             foreach (var id in _hotkeys) NativeMethods.UnregisterHotKey(_handle, id);
             NativeMethods.RemoveWindowSubclass(_handle, _windowProc, 1);
         };
+    }
+
+    private async Task ReviewPdfCloseAsync()
+    {
+        _reviewingPdfClose = true;
+        try
+        {
+            if (await PdfToolsPage.ConfirmDiscardAsync()) { _allowPdfClose = true; Close(); }
+            else _closeAfterFileOperation = _closeWhenDone = false;
+        }
+        catch (Exception error) { _closeAfterFileOperation = false; Status("无法关闭", error.Message, InfoBarSeverity.Error); }
+        finally { _reviewingPdfClose = false; }
     }
 
     private nint WindowProc(nint hwnd, uint message, nuint wParam, nint lParam, nuint id, nuint data)
@@ -151,7 +181,7 @@ public sealed partial class MainWindow : Window
     }
     private async Task RunAsync(Func<Task> action)
     {
-        if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy) return;
+        if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy) return;
         if (ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
         DiskCleanupPage.Deactivate();
         LibraryPage.Deactivate();
@@ -300,11 +330,28 @@ public sealed partial class MainWindow : Window
             content.Children.Add(new FontIcon { Glyph = glyph, FontSize = 17 });
             content.Children.Add(new TextBlock { Text = name, FontSize = 14, VerticalAlignment = VerticalAlignment.Center });
             var button = new ToggleButton { Content = content, Style = (Style)Application.Current.Resources["SidebarButtonStyle"], IsChecked = id == ToolId.Overview };
-            button.Click += async (_, _) => await NavigateAsync(id);
+            if (id == ToolId.CaptureMenu)
+            {
+                content.Children.Add(new FontIcon { Glyph = "\uE70D", FontSize = 9 });
+                var menu = new MenuFlyout();
+                foreach (var child in ToolCatalog.All.Where(tool => tool.Parent == id))
+                {
+                    var item = new MenuFlyoutItem { Text = child.Title, Icon = new FontIcon { Glyph = child.Glyph } };
+                    item.Click += async (_, _) => { if (_mode == CaptureMode.Idle) await NavigateAsync(child.Id); };
+                    menu.Items.Add(item);
+                }
+                FlyoutBase.SetAttachedFlyout(button, menu);
+                button.Click += (_, _) =>
+                {
+                    button.IsChecked = ToolCatalog.NavigationId(_selectedTool) == id;
+                    FlyoutBase.ShowAttachedFlyout(button);
+                };
+            }
+            else button.Click += async (_, _) => await NavigateAsync(id);
             _navigation.Add(id, button); ToolNavigation.Children.Add(button);
         }
         Add(ToolId.Overview, "工具总览", "\uE80F");
-        foreach (var category in ToolCatalog.All.GroupBy(tool => tool.Category))
+        foreach (var category in ToolCatalog.TopLevel.GroupBy(tool => tool.Category))
         {
             ToolNavigation.Children.Add(new TextBlock { Text = category.Key, FontSize = 11, Margin = new(16, 12, 0, 6),
                 Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 132, 158, 145)) });
@@ -314,25 +361,30 @@ public sealed partial class MainWindow : Window
 
     private void UpdateNavigationAvailability()
     {
-        foreach (var button in _navigation.Values) button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy;
+        foreach (var button in _navigation.Values) button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy;
     }
 
     private async Task NavigateAsync(ToolId id, string? path = null)
     {
-        if (LibraryPage.IsBusy || FileToolsPage.IsBusy) return;
+        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy) return;
+        if (id == ToolId.CaptureMenu) id = ToolId.Screenshot;
+        _selectedTool = id;
         if (id != ToolId.ImageViewer && ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
         if (id != ToolId.ImageViewer) Title = "Toolbox · 工具箱";
         LibraryPage.Deactivate();
         if (id != ToolId.ImageViewer) ImageViewerPage.Deactivate();
         if (id != ToolId.DiskCleanup) DiskCleanupPage.Deactivate();
-        foreach (var (key, button) in _navigation) button.IsChecked = key == id;
+        if (id != ToolId.Pdf) PdfToolsPage.Deactivate();
+        var navigationId = ToolCatalog.NavigationId(id);
+        foreach (var (key, button) in _navigation) button.IsChecked = key == navigationId;
         ToolNavigation.UpdateLayout();
-        _navigation[id].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        _navigation[navigationId].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
         HomePage.Visibility = id == ToolId.Overview ? Visibility.Visible : Visibility.Collapsed;
         LibraryPage.Visibility = id == ToolId.Library ? Visibility.Visible : Visibility.Collapsed;
         FileToolsPage.Visibility = id == ToolId.FileManager ? Visibility.Visible : Visibility.Collapsed;
         DiskCleanupPage.Visibility = id == ToolId.DiskCleanup ? Visibility.Visible : Visibility.Collapsed;
         ImageViewerPage.Visibility = id == ToolId.ImageViewer ? Visibility.Visible : Visibility.Collapsed;
+        PdfToolsPage.Visibility = id == ToolId.Pdf ? Visibility.Visible : Visibility.Collapsed;
         var capture = id is ToolId.Screenshot or ToolId.ScrollCapture or ToolId.Recording;
         CapturePage.Visibility = capture ? Visibility.Visible : Visibility.Collapsed;
         if (capture)
@@ -354,7 +406,12 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var request = ImageLaunchRequest.Parse(arguments);
+            var values = arguments.ToArray();
+            if (values.Length == 1 && Path.GetExtension(values[0]).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                await NavigateAsync(ToolId.Pdf); await PdfToolsPage.OpenPathAsync(Path.GetFullPath(values[0])); return;
+            }
+            var request = ImageLaunchRequest.Parse(values);
             if (request is null) return;
             await NavigateAsync(ToolId.ImageViewer);
             await ImageViewerPage.OpenPathAsync(request.Path);

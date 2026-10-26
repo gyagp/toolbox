@@ -31,6 +31,19 @@
         "resolved": "7.0.1",
         "contentHash": "QwDAc3IpTgjaRAw3HLLc+pnznQp+D5W3us9VckpPPasszpCOs5C1lAScc6AOGaEtssjSlKfHKHeI61p4djWXOA=="
       },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.2",
+        "contentHash": "3iE7UF7MQkCv1cxzCahz+Y/guQbTqieyxyaWKhrRO91itI9cOKO76OHeQDahqG4MmW5umr3CcCvGmK92lWNlbg=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "8.0.3",
+        "contentHash": "dL0QGToTxggRLMYY4ZYX5AMwBb+byQBd/5dMiZE07Nv73o6I5Are3C7eQTh7K2+A4ct0PVISSr7TZANbiNb2yQ==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2"
+        }
+      },
       "Microsoft.Web.WebView2": {
         "type": "Transitive",
         "resolved": "1.0.3179.45",
@@ -121,10 +134,24 @@
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260708001"
         }
       },
+      "PDFsharp": {
+        "type": "Transitive",
+        "resolved": "6.2.4",
+        "contentHash": "GhTr9F1uOYXHCIEOB5PXIgqn5a8WLsJL2m0eewTA0IvY1j6N4HGXHKKmEyB90/N6vrjmYamf41V9zbmdW2HY3g==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.3",
+          "System.Security.Cryptography.Pkcs": "8.0.1"
+        }
+      },
       "System.Numerics.Tensors": {
         "type": "Transitive",
         "resolved": "9.0.0",
         "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "Wz+IgL2xpg8KJ4i2VWj6uz1PmZNu4Q0Ljlwd73P9Vze5NcOBtctLii3itV0PB2MpOqwqDEGfB6RCdv94A4E5yQ=="
       },
       "toolbox.core": {
         "type": "Project"
@@ -132,7 +159,9 @@
       "toolbox.platform": {
         "type": "Project",
         "dependencies": {
-          "Toolbox.Core": "[0.1.2, )"
+          "PDFsharp": "[6.2.4, )",
+          "System.Security.Cryptography.Pkcs": "[10.0.14, )",
+          "Toolbox.Core": "[0.1.9, )"
         }
       }
     },
@@ -150,6 +179,11 @@
           "Microsoft.WindowsAppSDK.Base": "1.8.251216001",
           "Microsoft.WindowsAppSDK.InteractiveExperiences": "1.8.260708001"
         }
+      },
+      "System.Security.Cryptography.Pkcs": {
+        "type": "Transitive",
+        "resolved": "10.0.14",
+        "contentHash": "Wz+IgL2xpg8KJ4i2VWj6uz1PmZNu4Q0Ljlwd73P9Vze5NcOBtctLii3itV0PB2MpOqwqDEGfB6RCdv94A4E5yQ=="
       }
     }
   }

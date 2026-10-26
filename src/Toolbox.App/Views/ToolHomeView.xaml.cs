@@ -12,7 +12,7 @@ public sealed partial class ToolHomeView : UserControl
     public ToolHomeView()
     {
         InitializeComponent();
-        foreach (var category in ToolCatalog.All.GroupBy(tool => tool.Category))
+        foreach (var category in ToolCatalog.TopLevel.GroupBy(tool => tool.Category))
         {
             var section = new StackPanel { Spacing = 12 };
             section.Children.Add(new TextBlock { Text = category.Key, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
