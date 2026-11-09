@@ -22,6 +22,8 @@ public partial class App : Application
         if (testIndex < 0) { testIndex = Array.IndexOf(arguments, "--file-tools-test"); fileToolsOnly = testIndex >= 0; }
         var pdfOnly = false;
         if (testIndex < 0) { testIndex = Array.IndexOf(arguments, "--pdf-test"); pdfOnly = testIndex >= 0; }
+        var windowCloseOnly = false;
+        if (testIndex < 0) { testIndex = Array.IndexOf(arguments, "--window-close-test"); windowCloseOnly = testIndex >= 0; }
         if (testIndex < 0)
         {
             var main = new MainWindow();
@@ -38,6 +40,7 @@ public partial class App : Application
             _window = main;
             main.Activate();
             if (startupOnly) await Task.Delay(500);
+            else if (windowCloseOnly) await main.RunWindowCloseTestAsync(output);
             else if (pdfOnly) await main.RunPdfTestAsync(output);
             else if (fileToolsOnly) await main.RunFileToolsTestAsync(output);
             else if (cleanupOnly) await main.RunCleanupTestAsync(output);
@@ -46,6 +49,7 @@ public partial class App : Application
             else await main.RunSmokeTestAsync(output);
             File.WriteAllText(Path.Combine(output, "result.txt"), startupOnly ? "PASS: packaged WinUI startup and resources.\n" : pdfOnly ? "PASS: grouped capture menu, PDF previews, Chinese text, annotations, split, rotated/cropped coordinates and image-only safe-cover export.\n" : fileToolsOnly ? "PASS: typed permanent-delete confirmation and retry, cancel preserves file, lock diagnosis, sticky cancel controls, and native window-close cancellation.\n" : cleanupOnly ? "PASS: disk cleanup navigation and read-only preview rendering, complete/partial/unavailable states. No Windows cleanup was launched.\n" : imageOnly ? "PASS: image formats, GIF playback, fullscreen, keyboard navigation, file activation, corrupt files, and handle release.\n" : libraryOnly ? "PASS: library discovery, filtering, image preview, video playback/no autoplay, rename, delete, restore, file watching, empty state.\n" : "PASS: capture regression and content library integration.\n");
             Environment.ExitCode = 0;
+            if (windowCloseOnly) File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: window tool navigation, visual Z-order selection, blocked surfaces, cancellation, confirmation, narrow layout, honest results, and native close-during-confirmation. No user window was closed.\n");
         }
         catch (Exception error)
         {

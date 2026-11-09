@@ -23,7 +23,7 @@
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="1">
             <TextBlock Text="工具箱" FontSize="22" FontWeight="SemiBold" Foreground="#F1F7F4" />
-            <TextBlock Text="TOOLBOX  /  0.2.1" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
+            <TextBlock Text="TOOLBOX  /  0.2.2" FontSize="8" CharacterSpacing="20" Foreground="#93ACA0" />
           </StackPanel>
         </StackPanel>
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Visible">
@@ -120,6 +120,7 @@
       <views:DiskCleanupView x:Name="DiskCleanupPage" Grid.Row="2" Visibility="Collapsed" />
       <views:ImageViewerView x:Name="ImageViewerPage" Grid.Row="2" Visibility="Collapsed" />
       <views:PdfToolsView x:Name="PdfToolsPage" Grid.Row="2" Visibility="Collapsed" />
+      <views:WindowCloseView x:Name="WindowClosePage" Grid.Row="2" Visibility="Collapsed" />
     </Grid>
   </Grid>
 </Window>

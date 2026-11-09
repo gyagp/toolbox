@@ -48,6 +48,12 @@ public sealed partial class MainWindow : Window
         FileToolsPage.Initialize(_handle);
         ImageViewerPage.Initialize(_handle);
         PdfToolsPage.Initialize(_handle);
+        WindowClosePage.Initialize(this);
+        WindowClosePage.BusyChanged += busy =>
+        {
+            UpdateNavigationAvailability();
+            if (!busy && _closeAfterFileOperation) DispatcherQueue.TryEnqueue(Close);
+        };
         ImageViewerPage.FullScreenRequested += full => SafeAction(() => SetViewerFullScreen(full));
         ImageViewerPage.ImageOpened += path => Title = $"{Path.GetFileName(path)} · Toolbox";
         RootGrid.SizeChanged += (_, e) => ShortcutHints.Visibility = e.NewSize.Height < 740 ? Visibility.Collapsed : Visibility.Visible;
@@ -82,6 +88,13 @@ public sealed partial class MainWindow : Window
         };
         AppWindow.Closing += (sender, e) =>
         {
+            if (WindowClosePage.IsBusy)
+            {
+                e.Cancel = true;
+                _closeAfterFileOperation = true;
+                WindowClosePage.Cancel();
+                return;
+            }
             if (FileToolsPage.IsBusy || PdfToolsPage.IsBusy)
             {
                 e.Cancel = true;
@@ -107,6 +120,8 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             DiskCleanupPage.Deactivate();
+            WindowClosePage.Cancel();
+            WindowClosePage.Deactivate();
             PdfToolsPage.Cancel();
             LibraryPage.Dispose();
             ImageViewerPage.Deactivate();
@@ -182,7 +197,7 @@ public sealed partial class MainWindow : Window
     }
     private async Task RunAsync(Func<Task> action)
     {
-        if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy) return;
+        if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy || WindowClosePage.IsBusy) return;
         if (ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
         DiskCleanupPage.Deactivate();
         LibraryPage.Deactivate();
@@ -354,12 +369,12 @@ public sealed partial class MainWindow : Window
     private void UpdateNavigationAvailability()
     {
         foreach (var button in _navigation.Values.Concat(_captureTabs.Values))
-            button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy;
+            button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy && !WindowClosePage.IsBusy;
     }
 
     private async Task NavigateAsync(ToolId id, string? path = null)
     {
-        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy)
+        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy || WindowClosePage.IsBusy)
         {
             foreach (var (key, button) in _navigation) button.IsChecked = key == ToolCatalog.NavigationId(_selectedTool);
             foreach (var (key, tab) in _captureTabs) tab.IsChecked = key == _selectedTool;
@@ -373,6 +388,7 @@ public sealed partial class MainWindow : Window
         if (id != ToolId.ImageViewer) ImageViewerPage.Deactivate();
         if (id != ToolId.DiskCleanup) DiskCleanupPage.Deactivate();
         if (id != ToolId.Pdf) PdfToolsPage.Deactivate();
+        if (id != ToolId.WindowClose) WindowClosePage.Deactivate();
         var navigationId = ToolCatalog.NavigationId(id);
         foreach (var (key, button) in _navigation) button.IsChecked = key == navigationId;
         ToolNavigation.UpdateLayout();
@@ -382,6 +398,7 @@ public sealed partial class MainWindow : Window
         DiskCleanupPage.Visibility = id == ToolId.DiskCleanup ? Visibility.Visible : Visibility.Collapsed;
         ImageViewerPage.Visibility = id == ToolId.ImageViewer ? Visibility.Visible : Visibility.Collapsed;
         PdfToolsPage.Visibility = id == ToolId.Pdf ? Visibility.Visible : Visibility.Collapsed;
+        WindowClosePage.Visibility = id == ToolId.WindowClose ? Visibility.Visible : Visibility.Collapsed;
         UpdateCaptureNavigation(id);
         if (id == ToolId.Library) await LibraryPage.ActivateAsync(path);
         if (id == ToolId.ImageViewer) await ImageViewerPage.ActivateAsync();

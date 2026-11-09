@@ -3,6 +3,12 @@ using System.Reflection;
 using Toolbox.Core;
 using Toolbox.Platform;
 
+if (args.Length == 3 && args[0] == "--window-fixture")
+{
+    WindowCloseFixture.Run(args[1], args[2]);
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--cleanup-inspect")
 {
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(DiskCleanupInspector.Scan(args[1]), new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
@@ -141,6 +147,7 @@ try
     await AutomaticRecoveryTests.RunAsync(Check, root, HoldAsync);
     await FileOperationProgressTests.RunAsync(Check, root);
     PdfWorkspaceTests.Run(Check, root);
+    await WindowCloseTests.RunAsync(Check, root);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
 }
 finally
