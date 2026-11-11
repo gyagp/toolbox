@@ -198,8 +198,8 @@ public sealed partial class DiskCleanupView : UserControl
 
     internal Task BeginCodexCloseFixtureAsync()
     {
-        CodexPage.ShowReport(new(CodexReleaseCleaner.DefaultRoot, 2,
-            [new("fixture", "fixture", "0.1.0", "x64", 1, "fixture", null)], []));
+        CodexPage.ShowReport(new(2, [new(CodexReleaseCleaner.DefaultRoot, 2,
+            [new("fixture", "fixture", "0.1.0", "x64", 1, "fixture", null)], [])]));
         return CodexPage.DeleteAsync();
     }
 

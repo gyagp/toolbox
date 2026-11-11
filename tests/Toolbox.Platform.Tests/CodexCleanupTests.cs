@@ -11,9 +11,9 @@ internal static class CodexCleanupTests
         var fixtureRoot = Path.Combine(sandbox, "codex-cleanup");
         Directory.CreateDirectory(fixtureRoot);
         var fixtureNumber = 0;
-        (string Root, CodexReleaseCleaner Cleaner) Fixture(Func<CodexReleaseCleaner.RunningPackages>? processes = null)
+        (string Root, CodexReleaseCleaner Cleaner) Fixture(Func<CodexReleaseCleaner.RunningPackages>? processes = null, string installation = "standalone")
         {
-            var root = Path.Combine(fixtureRoot, (++fixtureNumber).ToString(), ".codex", "packages", "standalone");
+            var root = Path.Combine(fixtureRoot, (++fixtureNumber).ToString(), ".codex", "packages", installation);
             Directory.CreateDirectory(Path.Combine(root, "releases"));
             foreach (var version in new[] { "0.9.0", "0.10.0", "0.11.0", "0.12.0" }) AddPackage(root, version);
             DiskCleanupTests.CreateJunction(Path.Combine(root, "current"), Package(root, "0.12.0"));
@@ -195,10 +195,96 @@ internal static class CodexCleanupTests
             }
         }
 
+        var combinedStandalone = Fixture(); var daemon = Fixture(installation: "app-server-daemon");
+        var combined = new CodexInstallationsCleaner([combinedStandalone.Cleaner, daemon.Cleaner]);
+        var combinedPreview = combined.Scan();
+        check(combinedPreview.Installations.Count == 2 && combinedPreview.CandidateCount == 4 &&
+            combinedPreview.Installations.All(report => report.CandidateCount == 2),
+            "Both installations retain their own newest two versions, including duplicate version names");
+        var combinedProgress = new List<CodexCleanupProgress>();
+        var combinedResult = await combined.DeleteAsync(combinedPreview, progress: new InlineProgress(combinedProgress.Add));
+        check(combinedResult.Deleted.Count == 4 && combinedResult.Deleted.Count(name => name.StartsWith("app-server-daemon / ")) == 2 &&
+            Directory.GetDirectories(Path.Combine(daemon.Root, "releases")).Length == 2 &&
+            Directory.GetDirectories(Path.Combine(combinedStandalone.Root, "releases")).Length == 2,
+            "Combined cleanup deletes only reviewed old packages and distinguishes their installation in results");
+        check(combinedProgress.All(update => update.Total == 4) && combinedProgress.Select(update => update.Completed).SequenceEqual(combinedProgress.Select(update => update.Completed).Order()) &&
+            combinedProgress.Last().Completed == 4 && combinedProgress.Any(update => update.Name.Contains("app-server-daemon")),
+            "Progress spans both installations monotonically with their source labels");
+        check(File.Exists(Path.Combine(daemon.Root, "current", "bin", "codex.exe")) &&
+            File.ReadAllText(Path.Combine(daemon.Root, "auto-update-version")) == Name("0.12.0") &&
+            File.ReadAllText(Path.Combine(daemon.Root, "..", "..", "config.toml")) == "preserve config and credentials",
+            "Daemon cleanup preserves its current executable, updater marker and user configuration");
+
+        var oneStandalone = Fixture(); var oneDaemon = Fixture(installation: "app-server-daemon");
+        var combinedOne = new CodexInstallationsCleaner([oneStandalone.Cleaner, oneDaemon.Cleaner]);
+        var combinedOneResult = await combinedOne.DeleteAsync(combinedOne.Scan(1));
+        check(combinedOneResult.Deleted.Count == 6 && Directory.GetDirectories(Path.Combine(oneDaemon.Root, "releases")).Length == 1 &&
+            Directory.GetDirectories(Path.Combine(oneStandalone.Root, "releases")).Length == 1,
+            "Keep-one applies independently to both installation roots");
+
+        var protectedStandalone = Fixture(); var protectedDaemon = Fixture(installation: "app-server-daemon");
+        Directory.Delete(Path.Combine(protectedDaemon.Root, "current"));
+        DiskCleanupTests.CreateJunction(Path.Combine(protectedDaemon.Root, "current"), Package(protectedDaemon.Root, "0.9.0"));
+        File.WriteAllText(Path.Combine(protectedDaemon.Root, "auto-update-version"), Name("0.10.0"));
+        var daemonRunning = new CodexReleaseCleaner(protectedDaemon.Root, () => new([Path.Combine(Package(protectedDaemon.Root, "0.11.0"), "bin", "codex.exe")]));
+        var independentlyProtected = new CodexInstallationsCleaner([protectedStandalone.Cleaner, daemonRunning]).Scan(1);
+        check(independentlyProtected.Installations[1].CandidateCount == 0 && independentlyProtected.Installations[0].CandidateCount == 3,
+            "Daemon current, updater and running versions are protected without affecting the other installation");
+
+        var healthy = Fixture(); var brokenDaemon = Fixture(installation: "app-server-daemon");
+        File.Delete(Path.Combine(brokenDaemon.Root, "auto-update-version"));
+        var partialInstallations = new CodexInstallationsCleaner([healthy.Cleaner, brokenDaemon.Cleaner]);
+        var partialInstallationsPreview = partialInstallations.Scan();
+        check(partialInstallationsPreview.CandidateCount == 2 && partialInstallationsPreview.Installations[1].Releases.Count == 0 &&
+            partialInstallationsPreview.Warnings.Any(warning => warning.Contains("app-server-daemon")),
+            "Malformed daemon metadata contributes no deletion candidates and a source-specific warning");
+        var healthyResult = await partialInstallations.DeleteAsync(partialInstallationsPreview);
+        check(healthyResult.Deleted.Count == 2 && Directory.GetDirectories(Path.Combine(brokenDaemon.Root, "releases")).Length == 4,
+            "An unverifiable daemon is untouched while a separately verified installation can be cleaned");
+
+        var busyStandalone = Fixture(); var busyDaemon = Fixture(installation: "app-server-daemon");
+        var combinedBusy = new CodexInstallationsCleaner([busyStandalone.Cleaner, busyDaemon.Cleaner]);
+        var combinedBusyPreview = combinedBusy.Scan();
+        using (var daemonLock = new FileStream(Path.Combine(busyDaemon.Root, "install.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var busyResult = await combinedBusy.DeleteAsync(combinedBusyPreview);
+            check(busyResult.Deleted.Count == 2 && busyResult.Skipped.Count == 2 && busyResult.Skipped.All(message => message.StartsWith("app-server-daemon / ")) &&
+                Directory.GetDirectories(Path.Combine(busyDaemon.Root, "releases")).Length == 4,
+                "Daemon installer lock stops all deletion in its root and reports skipped packages");
+        }
+
+        var cancelStandalone = Fixture(); var cancelDaemon = Fixture(installation: "app-server-daemon");
+        var combinedCancel = new CodexInstallationsCleaner([cancelStandalone.Cleaner, cancelDaemon.Cleaner]);
+        using (var stop = new CancellationTokenSource())
+        {
+            var canceledCombined = await combinedCancel.DeleteAsync(combinedCancel.Scan(), stop.Token,
+                new InlineProgress(update => { if (update.Completed == 2) stop.Cancel(); }));
+            check(canceledCombined.Cancelled && canceledCombined.Deleted.Count == 2 && Directory.GetDirectories(Path.Combine(cancelDaemon.Root, "releases")).Length == 4,
+                "Cancellation at the installation boundary prevents the second root from being touched");
+        }
+
+        var safeStandalone = Fixture(); var safeDaemon = Fixture(installation: "app-server-daemon");
+        var safeCombined = new CodexInstallationsCleaner([safeStandalone.Cleaner, safeDaemon.Cleaner]);
+        var safePreview = safeCombined.Scan();
+        async Task<bool> RejectCombined(CodexInstallationsReport forged)
+        {
+            try { await safeCombined.DeleteAsync(forged); return false; }
+            catch (InvalidOperationException) { return true; }
+        }
+        check(await RejectCombined(safePreview with { Installations = [safePreview.Installations[0], safePreview.Installations[1] with { Root = outside }] }),
+            "Combined cleanup rejects an unknown installation root before deleting anything");
+        var daemonCandidate = safePreview.Installations[1].Releases.First(release => release.CanDelete);
+        check(await RejectCombined(safePreview with { Installations = [safePreview.Installations[0], safePreview.Installations[1] with { Releases = [daemonCandidate with { Path = outside }] }] }),
+            "A bad path in the second installation is rejected before deleting the first installation");
+        check(await RejectCombined(safePreview with { Installations = [safePreview.Installations[0], safePreview.Installations[0]] }) &&
+            await RejectCombined(safePreview with { KeepNewest = 1 }),
+            "Combined cleanup rejects duplicate roots and inconsistent retention policies");
+        check(Directory.GetDirectories(Path.Combine(safeStandalone.Root, "releases")).Length == 4 &&
+            Directory.GetDirectories(Path.Combine(safeDaemon.Root, "releases")).Length == 4 && File.ReadAllText(Path.Combine(outside, "keep.txt")) == "preserve",
+            "All forged combined plans leave both installations and unrelated user files intact");
+
         // All links are owned by this test. Remove them without following targets before its parent's teardown.
-        foreach (var current in Directory.GetDirectories(fixtureRoot).Select(path => Path.Combine(path, ".codex", "packages", "standalone", "current")))
-            if (Directory.Exists(current)) Directory.Delete(current);
-        Directory.Delete(nestedLink);
+        RemoveFixtureLinks(sandbox);
     }
 
     private static string Name(string version, string target = "x86_64-pc-windows-msvc") => version + "-" + target;

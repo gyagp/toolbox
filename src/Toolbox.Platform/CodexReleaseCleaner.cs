@@ -27,7 +27,9 @@ public sealed record CodexCleanupResult(IReadOnlyList<string> Deleted, IReadOnly
 public sealed class CodexReleaseCleaner
 {
     public static string DefaultRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "packages", "standalone");
+    public static string AppServerDaemonRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "packages", "app-server-daemon");
     private readonly string _root;
+    internal string Root => _root;
     private readonly Func<RunningPackages> _running;
     private static readonly Regex ReleaseName = new(@"^(\d+\.\d+\.\d+)-(x86_64-pc-windows-msvc|aarch64-pc-windows-msvc)$", RegexOptions.CultureInvariant);
     private static readonly HashSet<string> Executables = new(StringComparer.OrdinalIgnoreCase)
@@ -36,6 +38,7 @@ public sealed class CodexReleaseCleaner
     private const uint ReadAttributes = 0x80, DeleteAccess = 0x10000, OpenReparseDirectory = 0x02200000;
 
     public CodexReleaseCleaner() : this(DefaultRoot, ReadRunningPackages) { }
+    internal CodexReleaseCleaner(string root) : this(root, ReadRunningPackages) { }
     internal CodexReleaseCleaner(string root, Func<RunningPackages> running)
     { _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)); _running = running; }
     internal sealed record RunningPackages(IReadOnlyList<string> Paths, string? Error = null);
@@ -48,7 +51,7 @@ public sealed class CodexReleaseCleaner
         cancellation.ThrowIfCancellationRequested();
         var warnings = new List<string>();
         var releases = new List<CodexRelease>();
-        if (!Directory.Exists(_root)) return new(_root, keepNewest, [], ["未发现 Codex standalone 安装。"]);
+        if (!Directory.Exists(_root)) return new(_root, keepNewest, [], [$"未发现 Codex {Path.GetFileName(_root)} 安装。"]);
         SafeAncestors(_root);
         var releaseRoot = Path.Combine(_root, "releases");
         SafeAncestors(releaseRoot);
@@ -89,14 +92,9 @@ public sealed class CodexReleaseCleaner
 
     private CodexCleanupResult Delete(CodexReleaseReport reviewed, CancellationToken cancellation, IProgress<CodexCleanupProgress>? progress)
     {
-        if (!Path.GetFullPath(reviewed.Root).Equals(_root, StringComparison.OrdinalIgnoreCase) || reviewed.KeepNewest is not (1 or 2))
-            throw new InvalidOperationException("预览目录或保留策略不匹配，请重新扫描。");
+        ValidateReview(reviewed);
         var deleted = new List<string>(); var skipped = new List<string>();
         var selected = reviewed.Releases.Where(item => item.CanDelete).DistinctBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToArray();
-        foreach (var item in selected)
-            if (!Path.GetDirectoryName(Path.GetFullPath(item.Path))!.Equals(Path.Combine(_root, "releases"), StringComparison.OrdinalIgnoreCase) ||
-                Path.GetFileName(item.Path) != item.Name || !ReleaseName.IsMatch(item.Name))
-                throw new InvalidOperationException("删除范围不在已核对的版本目录内。");
         if (cancellation.IsCancellationRequested) return new(deleted, skipped, true);
         var roots = new List<SafeFileHandle>();
         try
@@ -132,6 +130,17 @@ public sealed class CodexReleaseCleaner
             return new(deleted, skipped, cancellation.IsCancellationRequested);
         }
         finally { foreach (var handle in roots.AsEnumerable().Reverse()) handle.Dispose(); }
+    }
+
+    internal void ValidateReview(CodexReleaseReport reviewed)
+    {
+        if (!Path.GetFullPath(reviewed.Root).Equals(_root, StringComparison.OrdinalIgnoreCase) || reviewed.KeepNewest is not (1 or 2))
+            throw new InvalidOperationException("预览目录或保留策略不匹配，请重新扫描。");
+        var selected = reviewed.Releases.Where(item => item.CanDelete).DistinctBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var item in selected)
+            if (!Path.GetDirectoryName(Path.GetFullPath(item.Path))!.Equals(Path.Combine(_root, "releases"), StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileName(item.Path) != item.Name || !ReleaseName.IsMatch(item.Name))
+                throw new InvalidOperationException("删除范围不在已核对的版本目录内。");
     }
 
     private void DeletePackage(CodexRelease reviewed, CancellationToken cancellation)

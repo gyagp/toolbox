@@ -5,7 +5,7 @@ using Toolbox.Platform;
 
 if (args.SequenceEqual(new[] { "--codex-inspect" }))
 {
-    var report = new CodexReleaseCleaner().Scan();
+    var report = new CodexInstallationsCleaner().Scan();
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
     return;
 }

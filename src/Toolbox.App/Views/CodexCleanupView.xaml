@@ -10,13 +10,13 @@
         </Border>
         <StackPanel Grid.Column="1" Spacing="4">
           <TextBlock Text="Codex 旧版本" FontSize="18" FontWeight="SemiBold" Foreground="#1E3027" />
-          <TextBlock Text="只整理 standalone 安装的旧程序包，保留最新版本与正在使用的版本。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
+          <TextBlock Text="整理 standalone 和 app-server-daemon 的旧程序包，各自保留最新版本与正在使用的版本。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
         </StackPanel>
       </Grid>
       <TextBlock x:Name="PackageRoot" FontSize="11" Foreground="#78867F" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
       <Grid ColumnSpacing="12">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
-        <ComboBox x:Name="KeepPicker" Header="每种架构保留最近" SelectedIndex="1" SelectionChanged="Keep_Changed" MinWidth="145">
+        <ComboBox x:Name="KeepPicker" Header="各安装每种架构保留最近" SelectedIndex="1" SelectionChanged="Keep_Changed" MinWidth="170">
           <ComboBoxItem Content="1 个版本"/><ComboBoxItem Content="2 个版本（推荐）"/>
         </ComboBox>
         <Button x:Name="PreviewButton" Grid.Column="1" Content="扫描旧版本" Click="Preview_Click" VerticalAlignment="Bottom" CornerRadius="8" />
@@ -45,7 +45,7 @@
       <Button x:Name="DeleteButton" Content="删除旧版本…" Click="Delete_Click" IsEnabled="False" CornerRadius="8" />
       <InfoBar x:Name="ResultStatus" IsOpen="False" IsClosable="True" />
       <TextBlock x:Name="Details" FontSize="11" Foreground="#78867F" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
-      <TextBlock Text="删除需再次输入确认，永久移除预览中的旧程序包，不经过回收站。配置、登录、会话和项目不在清理范围内。取消不回滚已完成的删除；部分失败时保留剩余内容并报告。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
+      <TextBlock Text="点击确认后永久移除预览中的旧程序包，不经过回收站。配置、登录、会话和项目不在清理范围内。取消不回滚已完成的删除；部分失败时保留剩余内容并报告。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
     </StackPanel>
   </Border>
 </UserControl>
