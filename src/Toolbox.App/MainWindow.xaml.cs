@@ -49,6 +49,11 @@ public sealed partial class MainWindow : Window
         ImageViewerPage.Initialize(_handle);
         PdfToolsPage.Initialize(_handle);
         WindowClosePage.Initialize(this);
+        DiskCleanupPage.BusyChanged += busy =>
+        {
+            UpdateNavigationAvailability();
+            if (!busy && _closeAfterFileOperation) DispatcherQueue.TryEnqueue(Close);
+        };
         WindowClosePage.BusyChanged += busy =>
         {
             UpdateNavigationAvailability();
@@ -88,6 +93,10 @@ public sealed partial class MainWindow : Window
         };
         AppWindow.Closing += (sender, e) =>
         {
+            if (DiskCleanupPage.IsBusy)
+            {
+                e.Cancel = true; _closeAfterFileOperation = true; DiskCleanupPage.RequestCancel(); return;
+            }
             if (WindowClosePage.IsBusy)
             {
                 e.Cancel = true;
@@ -197,7 +206,7 @@ public sealed partial class MainWindow : Window
     }
     private async Task RunAsync(Func<Task> action)
     {
-        if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy || WindowClosePage.IsBusy) return;
+        if (_mode != CaptureMode.Idle || LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy || WindowClosePage.IsBusy || DiskCleanupPage.IsBusy) return;
         if (ImageViewerPage.IsFullScreen) SetViewerFullScreen(false);
         DiskCleanupPage.Deactivate();
         LibraryPage.Deactivate();
@@ -369,12 +378,12 @@ public sealed partial class MainWindow : Window
     private void UpdateNavigationAvailability()
     {
         foreach (var button in _navigation.Values.Concat(_captureTabs.Values))
-            button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy && !WindowClosePage.IsBusy;
+            button.IsEnabled = _mode == CaptureMode.Idle && !FileToolsPage.IsBusy && !PdfToolsPage.IsBusy && !WindowClosePage.IsBusy && !DiskCleanupPage.IsBusy;
     }
 
     private async Task NavigateAsync(ToolId id, string? path = null)
     {
-        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy || WindowClosePage.IsBusy)
+        if (LibraryPage.IsBusy || FileToolsPage.IsBusy || PdfToolsPage.IsBusy || WindowClosePage.IsBusy || DiskCleanupPage.IsBusy)
         {
             foreach (var (key, button) in _navigation) button.IsChecked = key == ToolCatalog.NavigationId(_selectedTool);
             foreach (var (key, tab) in _captureTabs) tab.IsChecked = key == _selectedTool;

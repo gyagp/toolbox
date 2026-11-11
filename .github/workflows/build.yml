@@ -27,7 +27,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.2.2' }
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.Substring(1) } else { '0.2.3' }
           ./scripts/package.ps1 -Version $version
       - name: Verify packaged startup
         shell: pwsh
@@ -45,6 +45,13 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Window-close test failed: $($process.ExitCode)" }
           if (!(Test-Path artifacts/window-close/result.txt)) { throw 'Window-close result missing' }
           Get-Content artifacts/window-close/result.txt
+      - name: Verify packaged cleanup interface and Codex confirmation
+        shell: pwsh
+        run: |
+          $process = Start-Process ./artifacts/publish/Toolbox.exe -ArgumentList '--cleanup-test artifacts/cleanup' -WindowStyle Hidden -PassThru
+          if (!$process.WaitForExit(30000)) { $process.Kill(); throw 'Cleanup UI test timed out' }
+          if ($process.ExitCode -ne 0) { throw "Cleanup UI failed: $($process.ExitCode)" }
+          Get-Content artifacts/cleanup/result.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Toolbox-win-x64

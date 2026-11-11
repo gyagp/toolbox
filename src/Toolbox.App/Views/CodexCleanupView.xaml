@@ -1,0 +1,51 @@
+<UserControl x:Class="Toolbox.App.Views.CodexCleanupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border Background="White" BorderBrush="#D5E7DB" BorderThickness="1" CornerRadius="16" Padding="20">
+    <StackPanel Spacing="12">
+      <Grid ColumnSpacing="12">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <Border Background="#EDF5EF" CornerRadius="10" Width="40" Height="40" VerticalAlignment="Top">
+          <FontIcon Glyph="&#xE943;" Foreground="#347D60" FontSize="20" />
+        </Border>
+        <StackPanel Grid.Column="1" Spacing="4">
+          <TextBlock Text="Codex 旧版本" FontSize="18" FontWeight="SemiBold" Foreground="#1E3027" />
+          <TextBlock Text="只整理 standalone 安装的旧程序包，保留最新版本与正在使用的版本。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
+        </StackPanel>
+      </Grid>
+      <TextBlock x:Name="PackageRoot" FontSize="11" Foreground="#78867F" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+      <Grid ColumnSpacing="12">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <ComboBox x:Name="KeepPicker" Header="每种架构保留最近" SelectedIndex="1" SelectionChanged="Keep_Changed" MinWidth="145">
+          <ComboBoxItem Content="1 个版本"/><ComboBoxItem Content="2 个版本（推荐）"/>
+        </ComboBox>
+        <Button x:Name="PreviewButton" Grid.Column="1" Content="扫描旧版本" Click="Preview_Click" VerticalAlignment="Bottom" CornerRadius="8" />
+      </Grid>
+      <TextBlock Text="current 启动器、自动更新指向与运行中的版本会额外保留，因此可能超过所选数量。无法核对、未知布局和带链接的包不删除；更新器正在使用时停止整理。不会结束 Codex 或其他进程。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
+      <ProgressBar x:Name="WorkProgress" Visibility="Collapsed" IsIndeterminate="True" Foreground="#347D60" Height="4" />
+      <TextBlock x:Name="Summary" Text="扫描后预览保留和删除清单。不会自动或定时清理。" FontSize="12" Foreground="#78867F" TextWrapping="Wrap" />
+      <ScrollViewer MaxHeight="280" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <ItemsControl x:Name="ReleaseList">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border BorderBrush="#E2E8E3" BorderThickness="0,0,0,1" Padding="0,9">
+              <Grid ColumnSpacing="10">
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Spacing="3">
+                  <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#1E3027" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding Status}" FontSize="11" Foreground="#63796B" TextWrapping="Wrap" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding Size}" FontSize="12" Foreground="#63796B" VerticalAlignment="Center" />
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      </ScrollViewer>
+      <Button x:Name="DeleteButton" Content="删除旧版本…" Click="Delete_Click" IsEnabled="False" CornerRadius="8" />
+      <InfoBar x:Name="ResultStatus" IsOpen="False" IsClosable="True" />
+      <TextBlock x:Name="Details" FontSize="11" Foreground="#78867F" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+      <TextBlock Text="删除需再次输入确认，永久移除预览中的旧程序包，不经过回收站。配置、登录、会话和项目不在清理范围内。取消不回滚已完成的删除；部分失败时保留剩余内容并报告。" FontSize="12" Foreground="#63796B" TextWrapping="Wrap" />
+    </StackPanel>
+  </Border>
+</UserControl>

@@ -11,6 +11,8 @@ public sealed partial class MainWindow
         await NavigateAsync(Tools.ToolId.DiskCleanup);
         await Task.Delay(250);
         await RenderUiAsync(output, "cleanup-empty.png");
+        await DiskCleanupPage.VerifyCodexUiAsync((element, name) => RenderUiAsync(output, name, element));
+        await RenderUiAsync(output, "codex-preview.png");
         // Render complete, partial and unavailable states with synthetic data. No cleanup is launched.
         var report = new CleanupReport("C:\\", DateTimeOffset.Now,
         [
@@ -38,5 +40,26 @@ public sealed partial class MainWindow
         await NavigateAsync(Tools.ToolId.FileManager);
         await NavigateAsync(Tools.ToolId.DiskCleanup);
         DiskCleanupPage.ShowDiagnosticReport(report);
+        await VerifyCloseCancelsCodexCleanupAsync(output);
+    }
+
+    private async Task VerifyCloseCancelsCodexCleanupAsync(string output)
+    {
+        var other = new MainWindow(new Toolbox.Core.CaptureLibrary(Path.Combine(output, "close-images"), Path.Combine(output, "close-videos")));
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        other.Closed += (_, _) => closed.TrySetResult(); other.Activate();
+        try
+        {
+            await other.NavigateAsync(Tools.ToolId.DiskCleanup);
+            await Task.Delay(250);
+            var running = other.DiskCleanupPage.BeginCodexCloseFixtureAsync();
+            await Task.Delay(150);
+            if (!other.DiskCleanupPage.IsBusy) throw new Exception("Codex confirmation is not busy.");
+            if (!PostDiagnosticClose(other._handle, 0x0010, 0, 0)) throw new Exception("Could not close the diagnostic Toolbox.");
+            if (await Task.WhenAny(closed.Task, Task.Delay(5000)) != closed.Task) throw new Exception("Closing Toolbox did not cancel Codex cleanup confirmation.");
+            await running;
+            if (other.DiskCleanupPage.IsBusy) throw new Exception("Close did not wait for Codex cleanup to stop.");
+        }
+        finally { other.DiskCleanupPage.RequestCancel(); if (!closed.Task.IsCompleted) other.Close(); }
     }
 }

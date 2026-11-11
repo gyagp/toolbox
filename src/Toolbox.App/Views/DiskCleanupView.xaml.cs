@@ -10,14 +10,26 @@ public sealed partial class DiskCleanupView : UserControl
     private bool _ready;
     private bool _loadedDrives;
 
-    public DiskCleanupView() { InitializeComponent(); _ready = true; }
+    public bool IsBusy => CodexPage.IsBusy;
+    public event Action<bool>? BusyChanged;
+    public DiskCleanupView()
+    {
+        InitializeComponent(); _ready = true;
+        CodexPage.BusyChanged += busy =>
+        {
+            CodexCancelTray.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+            UpdateActions(); BusyChanged?.Invoke(busy);
+        };
+    }
 
     internal void Activate()
     {
         if (!_loadedDrives) RefreshDrives();
     }
 
-    internal void Deactivate() => _scan?.Cancel();
+    internal void Deactivate() { _scan?.Cancel(); CodexPage.Cancel(); }
+    internal void RequestCancel() => Deactivate();
+    private void CodexCancel_Click(object sender, RoutedEventArgs e) => CodexPage.Cancel();
 
     private void RefreshDrives()
     {
@@ -38,11 +50,11 @@ public sealed partial class DiskCleanupView : UserControl
 
     private void UpdateActions()
     {
-        var busy = _scan is not null;
+        var busy = _scan is not null || IsBusy;
         DrivePicker.IsEnabled = RefreshButton.IsEnabled = StorageButton.IsEnabled = !busy;
         ScanButton.IsEnabled = CleanupButton.IsEnabled = !busy && DrivePicker.SelectedItem is DriveRow;
-        CancelButton.Visibility = ScanRing.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
-        ScanRing.IsActive = busy;
+        CancelButton.Visibility = ScanRing.Visibility = _scan is not null ? Visibility.Visible : Visibility.Collapsed;
+        ScanRing.IsActive = _scan is not null;
     }
 
     private void Drive_Changed(object sender, SelectionChangedEventArgs e)
@@ -175,6 +187,20 @@ public sealed partial class DiskCleanupView : UserControl
     {
         UpdateLayout();
         PageScroller.ChangeView(null, PageScroller.ScrollableHeight, null, true);
+    }
+
+    internal async Task VerifyCodexUiAsync(Func<FrameworkElement, string, Task> render)
+    {
+        CodexPage.StartBringIntoView(); await Task.Delay(150);
+        await CodexPage.VerifyConfirmationAsync(render);
+        CodexPage.StartBringIntoView();
+    }
+
+    internal Task BeginCodexCloseFixtureAsync()
+    {
+        CodexPage.ShowReport(new(CodexReleaseCleaner.DefaultRoot, 2,
+            [new("fixture", "fixture", "0.1.0", "x64", 1, "fixture", null)], []));
+        return CodexPage.DeleteAsync();
     }
 
     internal async Task VerifyDiagnosticScanControlsAsync(CleanupReport fixture)

@@ -3,6 +3,13 @@ using System.Reflection;
 using Toolbox.Core;
 using Toolbox.Platform;
 
+if (args.SequenceEqual(new[] { "--codex-inspect" }))
+{
+    var report = new CodexReleaseCleaner().Scan();
+    Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    return;
+}
+
 if (args.Length == 3 && args[0] == "--window-fixture")
 {
     WindowCloseFixture.Run(args[1], args[2]);
@@ -43,6 +50,21 @@ void Check(bool condition, string message)
     if (!condition) throw new Exception(message);
     count++;
     Console.WriteLine("PASS: " + message);
+}
+
+if (args.SequenceEqual(new[] { "--codex-tests" }))
+{
+    var codexSandbox = Path.Combine(Path.GetTempPath(), "Toolbox-codex-tests-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(codexSandbox);
+    try { await CodexCleanupTests.RunAsync(Check, codexSandbox); Console.WriteLine($"PASS: {count} Codex cleanup assertions."); }
+    catch (Exception error) { Console.Error.WriteLine(error); throw; }
+    finally
+    {
+        if (Path.GetDirectoryName(codexSandbox) != Path.TrimEndingDirectorySeparator(Path.GetTempPath())) throw new Exception("Unexpected Codex fixture path");
+        CodexCleanupTests.RemoveFixtureLinks(codexSandbox);
+        Directory.Delete(codexSandbox, recursive: true);
+    }
+    return;
 }
 
 if (args.SequenceEqual(new[] { "--pdf-tests" }))
@@ -142,6 +164,7 @@ try
     Check(canceled, "Large folder scans support cancellation");
     ImageAssociationTests.Run(Check);
     DiskCleanupTests.Run(Check);
+    await CodexCleanupTests.RunAsync(Check, root);
     await PermanentDeleteTests.RunAsync(Check);
     await FileOperationCancellationTests.RunAsync(Check);
     await AutomaticRecoveryTests.RunAsync(Check, root, HoldAsync);
@@ -149,6 +172,11 @@ try
     PdfWorkspaceTests.Run(Check, root);
     await WindowCloseTests.RunAsync(Check, root);
     Console.WriteLine($"PASS: {count} Windows integration assertions.");
+}
+catch (Exception error)
+{
+    Console.Error.WriteLine(error);
+    throw;
 }
 finally
 {
@@ -159,6 +187,7 @@ finally
         child.Dispose();
     }
     if (Path.GetDirectoryName(root) != Path.TrimEndingDirectorySeparator(Path.GetTempPath())) throw new Exception("Unexpected fixture path");
+    CodexCleanupTests.RemoveFixtureLinks(root);
     // Process exit is signaled before every kernel file reference necessarily drains.
     for (var attempt = 0; ; attempt++)
     {
